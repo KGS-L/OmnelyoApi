@@ -10,7 +10,7 @@ scenedetect[opencv]>=0.6.4
 ffmpeg-python>=0.2.0
 
 # --- Génération contenu IA ---
-anthropic>=0.34.0        # ou openai selon le LLM choisi pour le storytime
+openai>=1.40.0            # utilisé aussi pour xAI Grok (API compatible OpenAI)
 elevenlabs>=1.5.0        # TTS (alternative: openai TTS)
 
 # --- Overlay / card visuelle ---
