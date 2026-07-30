@@ -1,66 +1,232 @@
 # Robot Short Yt
 
-Bot Telegram + pipeline automatisé qui transforme une vidéo YouTube longue en plusieurs
-YouTube Shorts (1min–2m30) avec voix off storytime générée par IA, puis les programme
-automatiquement sur YouTube (2-3 publications/jour, créneaux fixes 12h/17h/20h).
+Bot Telegram qui automatise la création et la publication de YouTube Shorts :
+tu envoies un lien de vidéo, le bot la découpe en plusieurs séquences, génère une
+narration "storytime" avec voix IA, et programme automatiquement la publication
+sur YouTube (plusieurs shorts par jour, à horaires fixes).
 
-## Flow global
+## ✨ Fonctionnalités
+
+- 🔗 Soumission d'une vidéo source via un simple lien envoyé au bot Telegram
+- ✂️ Découpage intelligent en clips de 1 à 2m30 (détection de scènes, pas de coupe fixe arbitraire)
+- 🔇 Suppression automatique de l'audio original
+- 🤖 Génération d'un texte narratif ("storytime") via LLM, calibré sur la durée du clip
+- 🗣️ Génération de la voix off par synthèse vocale IA
+- 🖼️ Incrustation d'une card visuelle personnalisée (style commentaire) en haut de la vidéo
+- ☁️ Archivage des clips finaux sur stockage objet (Cloudflare R2)
+- 📅 Programmation automatique sur YouTube (2-3 publications/jour, créneaux configurables)
+- 🔐 Connexion YouTube en un clic depuis Telegram (OAuth2 via lien, aucune manipulation manuelle)
+- 🛎️ Notifications Telegram (résultat du découpage, confirmation de programmation, alertes en cas d'échec)
+- 🐳 Entièrement dockerisé, déployable sur n'importe quel VPS
+
+## 🏗️ Architecture
 
 ```
-1. Toi -> envoies un lien YouTube au bot Telegram
-2. downloader.py     -> télécharge la vidéo source (yt-dlp)
-3. scene_detect.py   -> détecte les scènes (PySceneDetect)
-4. video_cutter.py   -> fusionne/découpe en clips 1min-2m30, coupe le son original
-5. storytime.py      -> génère le script narratif (API LLM)
-6. tts.py            -> génère la voix off (API TTS)
-7. overlay.py         -> génère + incruste la card "commentaire" (8s)
-8. storage_r2.py     -> upload des clips finaux sur Cloudflare R2 (archive)
-9. scheduler.py       -> calcule le prochain créneau libre (DB) et upload
-                          programmé sur YouTube (privacyStatus=private + publishAt)
-10. telegram_bot.py   -> notifie le résultat ("Vidéo découpée en X shorts, programmés...")
-11. watchdog.py        -> cron quotidien : vérifie que les publications prévues ont
-                          bien eu lieu, alerte via le bot sinon
+Toi ──(lien vidéo)──▶ Bot Telegram
+                            │
+                            ▼
+                    ┌───────────────┐
+                    │  Scheduler /  │
+                    │  Orchestrateur│
+                    └───────┬───────┘
+                            │
+        ┌───────────────────┼───────────────────┐
+        ▼                   ▼                    ▼
+  Téléchargement      Découpage vidéo      Génération contenu
+  (yt-dlp)            (PySceneDetect       (LLM storytime
+                        + ffmpeg)            + TTS voix off
+                                              + card overlay)
+        │                   │                    │
+        └───────────────────┼────────────────────┘
+                            ▼
+                    Upload archive (R2)
+                            │
+                            ▼
+                    Upload programmé YouTube
+                    (API Data v3, publishAt)
+                            │
+                            ▼
+                    Notification Telegram
+                            │
+                            ▼
+              Watchdog quotidien (vérifie que
+              les publications prévues ont bien
+              eu lieu, alerte sinon)
 ```
 
-## Structure du projet
+Toute l'authentification YouTube passe par OAuth2 **piloté depuis Telegram** :
+la commande `/connect_youtube` génère un lien d'autorisation Google que tu ouvres
+dans ton navigateur (peu importe l'appareil). Un petit serveur web embarqué reçoit
+la confirmation de Google et termine la connexion automatiquement — aucune
+manipulation sur le serveur lui-même.
+
+## 📁 Structure du projet
 
 ```
 RobotShortYt/
-├── main.py                  # point d'entrée, lance le bot
-├── config.py                 # chargement des variables d'environnement
-├── requirements.txt
-├── .env.example
+├── main.py                    # point d'entrée (bot + serveur OAuth)
+├── config.py                   # chargement de la configuration (.env)
+├── Dockerfile
+├── docker-compose.yml
+├── Caddyfile                    # reverse proxy HTTPS automatique
 │
 ├── bot/
-│   ├── telegram_bot.py        # init du bot, polling/webhook
-│   └── handlers.py            # commandes (/status, /pause...) + réception des liens
+│   ├── telegram_bot.py           # initialisation du bot
+│   ├── handlers.py                # commandes (/status, /connect_youtube...)
+│   └── oauth_server.py             # serveur web du callback OAuth
 │
 ├── core/
-│   ├── downloader.py           # téléchargement vidéo (yt-dlp)
-│   ├── scene_detect.py          # détection de scènes (PySceneDetect)
-│   ├── video_cutter.py          # découpage final + suppression audio (ffmpeg/moviepy)
-│   ├── storytime.py              # génération du texte narratif (LLM)
-│   ├── tts.py                     # génération de la voix off (TTS)
-│   ├── overlay.py                  # génération + incrustation de la card
-│   ├── storage_r2.py                # upload/gestion Cloudflare R2
-│   └── youtube_uploader.py          # upload + programmation API YouTube
+│   ├── downloader.py               # téléchargement vidéo (yt-dlp)
+│   ├── scene_detect.py              # détection de scènes
+│   ├── video_cutter.py               # découpage final (ffmpeg)
+│   ├── storytime.py                   # génération du texte narratif (LLM)
+│   ├── tts.py                          # génération de la voix off
+│   ├── overlay.py                       # génération + incrustation de la card
+│   ├── storage_r2.py                     # archivage Cloudflare R2
+│   ├── youtube_auth.py                    # OAuth2 YouTube (flow web)
+│   └── youtube_uploader.py                 # upload + programmation YouTube
 │
 ├── db/
-│   ├── schema.sql               # définition des tables
-│   ├── models.py                 # dataclasses / ORM léger
-│   └── database.py                # connexion + requêtes (SQLite)
+│   ├── schema.sql                  # définition des tables
+│   ├── models.py                    # structures de données
+│   └── database.py                   # connexion SQLite
 │
 ├── scheduler/
-│   ├── scheduler.py               # calcul des créneaux, orchestration pipeline
-│   └── watchdog.py                 # vérification quotidienne des publications
+│   ├── scheduler.py                # orchestration du pipeline + créneaux
+│   └── watchdog.py                  # vérification quotidienne des publications
 │
-├── storage/
-│   ├── tmp/                        # fichiers en cours de traitement (nettoyés après)
-│   └── processed/                   # clips finaux avant upload
-│
-└── logs/
+├── credentials/                 # secrets YouTube (ignoré par git)
+├── storage/                     # fichiers vidéo temporaires et finaux
+├── logs/
+└── db/                          # base SQLite (créée au premier lancement)
 ```
 
-## Statut
+## 🧰 Prérequis
 
-🚧 Squelette initial — modules à implémenter un par un.
+- Un VPS (Linux) avec **Docker** et **Docker Compose** installés
+- Un **nom de domaine** pointant vers l'IP du VPS (nécessaire pour le HTTPS, requis par Google OAuth)
+- Un compte **Google Cloud** (gratuit) pour créer les identifiants API YouTube
+- Un bot **Telegram** (créé via [@BotFather](https://t.me/BotFather))
+- Un compte **Cloudflare R2** (ou autre stockage compatible S3) pour l'archivage
+- Une clé API **LLM** (Anthropic/OpenAI) pour la génération du storytime
+- Une clé API **TTS** (ElevenLabs ou équivalent) pour la voix off
+
+## 🚀 Installation
+
+### 1. Cloner le projet
+
+```bash
+git clone https://github.com/ton-compte/RobotShortYt.git
+cd RobotShortYt
+```
+
+### 2. Créer le bot Telegram
+
+1. Ouvre une conversation avec [@BotFather](https://t.me/BotFather)
+2. `/newbot`, choisis un nom et un username
+3. Récupère le token fourni (format `123456:ABC-DEF...`)
+
+### 3. Configurer l'API YouTube (Google Cloud Console)
+
+1. Crée un projet sur [console.cloud.google.com](https://console.cloud.google.com/)
+2. Active l'API **YouTube Data API v3** (menu *APIs et services > Bibliothèque*)
+3. Configure l'**écran de consentement OAuth** (type *External*, ajoute ton compte comme *Test user*)
+4. Crée un **ID client OAuth** de type **Application Web**
+5. Dans *URIs de redirection autorisés*, ajoute : `https://ton-domaine.com/oauth2callback`
+6. Télécharge le fichier JSON généré, place-le dans `credentials/client_secret.json`
+
+### 4. Configurer les variables d'environnement
+
+```bash
+cp .env.example .env
+```
+
+Édite `.env` et renseigne toutes les valeurs (voir tableau ci-dessous).
+
+### 5. Configurer le domaine dans le Caddyfile
+
+Édite `Caddyfile` et remplace `ton-domaine.com` par ton vrai domaine.
+
+### 6. Lancer
+
+```bash
+docker compose up -d --build
+```
+
+Vérifie les logs :
+
+```bash
+docker compose logs -f robot-short-yt
+```
+
+### 7. Connecter ta chaîne YouTube
+
+Dans Telegram, envoie `/connect_youtube` à ton bot. Clique le lien reçu,
+autorise l'accès avec ton compte Google — la connexion se termine automatiquement.
+
+## ⚙️ Configuration (`.env`)
+
+| Variable | Description |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | Token du bot (via @BotFather) |
+| `TELEGRAM_ADMIN_CHAT_ID` | Ton chat ID Telegram (pour les notifications/alertes) |
+| `YOUTUBE_CLIENT_SECRETS_FILE` | Chemin vers le JSON téléchargé de Google Cloud |
+| `YOUTUBE_TOKEN_FILE` | Chemin où le token OAuth sera sauvegardé |
+| `YOUTUBE_REDIRECT_URI` | URL publique du callback, ex: `https://ton-domaine.com/oauth2callback` |
+| `OAUTH_CALLBACK_PORT` | Port interne du serveur callback (défaut `8420`) |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Identifiants Cloudflare R2 |
+| `R2_BUCKET_NAME` | Nom du bucket R2 |
+| `R2_ENDPOINT_URL` | Endpoint R2 (ex: `https://<account_id>.r2.cloudflarestorage.com`) |
+| `ANTHROPIC_API_KEY` | Clé API pour la génération du storytime |
+| `ELEVENLABS_API_KEY` | Clé API pour la génération de la voix off |
+| `PUBLISH_SLOTS` | Créneaux horaires de publication, ex: `12:00,17:00,20:00` |
+| `MAX_CLIPS_PER_DAY` | Nombre max de shorts publiés par jour |
+| `CLIP_MIN_DURATION_SEC` / `CLIP_MAX_DURATION_SEC` | Durée min/max des clips générés |
+| `TIMEZONE` | Fuseau horaire pour la programmation |
+| `DATABASE_PATH` | Chemin de la base SQLite |
+
+## 💬 Commandes du bot
+
+| Commande | Description |
+|---|---|
+| `/connect_youtube` | Connecte (ou reconnecte) une chaîne YouTube |
+| `/status` | Affiche l'état des vidéos en cours de traitement / programmées |
+| *(lien vidéo)* | Soumet une nouvelle vidéo source pour découpage et programmation |
+
+## 🐳 Docker
+
+Le projet est entièrement conteneurisé :
+
+- **`robot-short-yt`** — le bot, le pipeline de traitement et le serveur OAuth interne
+- **`caddy`** — reverse proxy avec HTTPS automatique (Let's Encrypt) devant le callback OAuth
+
+Aucun port du conteneur principal n'est exposé directement : seul Caddy est accessible
+depuis l'extérieur (ports 80/443), ce qui limite la surface d'attaque.
+
+```bash
+docker compose up -d --build     # démarrer
+docker compose logs -f            # suivre les logs
+docker compose down                # arrêter
+docker compose down -v             # arrêter + supprimer les volumes (⚠️ perte des certificats HTTPS)
+```
+
+Les dossiers `credentials/`, `storage/`, `logs/` et `db/` sont montés en volumes :
+les données persistent entre les redéploiements.
+
+## 🔒 Sécurité & bonnes pratiques
+
+- Ne commit jamais `.env` ni `credentials/client_secret.json` (déjà exclus via `.gitignore`/`.dockerignore`)
+- Un seul compte Google (celui ajouté comme *Test user*) peut se connecter tant que
+  l'écran de consentement OAuth n'est pas passé en mode *Production* (suffisant pour un usage personnel)
+- Chaque déploiement (bot + projet Google Cloud + domaine) est indépendant :
+  ce projet peut être déployé plusieurs fois par différentes personnes, chacune avec ses propres clés
+
+## 📜 Licence
+
+À définir selon ton usage (MIT recommandé si tu comptes le partager publiquement).
+
+## ⚠️ Avertissement
+
+Ce projet republie du contenu vidéo à partir de sources externes. Assure-toi de
+respecter les droits d'auteur et les conditions d'utilisation des plateformes
+sources avant toute publication.

@@ -1,0 +1,39 @@
+services:
+  robot-short-yt:
+    build: .
+    container_name: robot-short-yt
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./credentials:/app/credentials
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+      - ./db:/app/db
+    # Pas de "ports:" ici : le conteneur n'est jamais exposé directement.
+    # Caddy communique avec lui via le réseau interne Docker (nom de service = hostname).
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: robot-short-yt-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - robot-short-yt
+    networks:
+      - internal
+
+networks:
+  internal:
+
+volumes:
+  caddy_data:
+  caddy_config:

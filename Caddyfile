@@ -1,0 +1,4 @@
+# Remplace par ton propre nom de domaine (doit pointer vers l'IP de ton VPS)
+ton-domaine.com {
+    reverse_proxy robot-short-yt:8420
+}

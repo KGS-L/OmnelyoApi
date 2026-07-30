@@ -52,7 +52,9 @@ def oauth2callback():
 
 def run_oauth_server() -> None:
     """À lancer dans un thread séparé au démarrage du bot (voir main.py)."""
-    app.run(host="127.0.0.1", port=config.OAUTH_CALLBACK_PORT)
+    # 0.0.0.0 nécessaire pour être joignable depuis le conteneur Caddy
+    # (le port n'est jamais exposé publiquement, seul Caddy y a accès via le réseau Docker interne)
+    app.run(host="0.0.0.0", port=config.OAUTH_CALLBACK_PORT)
 
 
 def start_in_background() -> None:
