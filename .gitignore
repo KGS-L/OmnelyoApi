@@ -4,3 +4,4 @@ data.json
 db/robot_short_yt.sqlite3
 db/__pycache__/
 core/__pycache__/
+logs/bot.log

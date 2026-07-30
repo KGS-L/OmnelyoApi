@@ -12,6 +12,7 @@ Flux complet :
 import logging
 import threading
 from http import HTTPStatus
+from typing import Callable, Optional
 
 from flask import Flask, request, jsonify
 
@@ -24,10 +25,10 @@ app = Flask(__name__)
 
 # Callback optionnel pour notifier le bot Telegram post-connexion
 # Signature attendue: callback(user_id: int | None) -> None
-_on_connected_callback: callable | None = None
+_on_connected_callback: Optional[Callable] = None
 
 
-def set_on_connected_callback(callback: callable) -> None:
+def set_on_connected_callback(callback: Callable) -> None:
     """Permet à bot/handlers.py d'enregistrer une notif Telegram post-connexion."""
     global _on_connected_callback
     _on_connected_callback = callback
