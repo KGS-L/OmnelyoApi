@@ -10,8 +10,7 @@ services:
       - ./storage:/app/storage
       - ./logs:/app/logs
       - ./db:/app/db
-    # Pas de "ports:" ici : le conteneur n'est jamais exposé directement.
-    # Caddy communique avec lui via le réseau interne Docker (nom de service = hostname).
+      - ./data.json:/app/data.json
     networks:
       - internal
 
@@ -30,6 +29,8 @@ services:
       - robot-short-yt
     networks:
       - internal
+    profiles:
+      - prod   # ← ne démarre que si --profile prod
 
 networks:
   internal:

@@ -4,11 +4,17 @@ Charge les variables d'environnement (.env) et les expose comme constantes typé
 """
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# Créer les répertoires de base au chargement
+for _dir in [BASE_DIR / "credentials", BASE_DIR / "db", BASE_DIR / "storage" / "tmp", 
+             BASE_DIR / "storage" / "processed", BASE_DIR / "logs"]:
+    _dir.mkdir(parents=True, exist_ok=True)
 
 # --- Telegram ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -20,12 +26,7 @@ YOUTUBE_CLIENT_SECRETS_FILE = BASE_DIR / os.getenv(
 )
 YOUTUBE_TOKEN_FILE = BASE_DIR / os.getenv("YOUTUBE_TOKEN_FILE", "credentials/token.json")
 
-# URL publique complète du callback OAuth, ex: https://mon-vps.com/oauth2callback
-# Doit correspondre EXACTEMENT à l'URI enregistrée dans Google Cloud Console
 YOUTUBE_REDIRECT_URI = os.getenv("YOUTUBE_REDIRECT_URI", "")
-
-# Port local sur lequel le petit serveur web du callback écoute
-# (généralement derrière un reverse proxy Caddy/nginx qui gère le HTTPS)
 OAUTH_CALLBACK_PORT = int(os.getenv("OAUTH_CALLBACK_PORT", 8420))
 
 # --- Cloudflare R2 ---
@@ -35,11 +36,9 @@ R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "")
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "robot-short-yt")
 R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL", "")
 
-# --- LLM (storytime) — xAI Grok ---
+# --- LLM ---
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 XAI_MODEL = os.getenv("XAI_MODEL")
-
-# --- LLM / TTS ---
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 
 # --- Scheduling ---

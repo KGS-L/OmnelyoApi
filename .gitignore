@@ -1,2 +1,5 @@
 credentials/client_secret.json
 .env
+data.json
+db/robot_short_yt.sqlite3
+db/__pycache__/

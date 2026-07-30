@@ -1,0 +1,20 @@
+services:
+  robot-short-yt:
+    build: .
+    container_name: robot-short-yt
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8420:8420"   # ← exposé directement pour tester l'OAuth callback
+    volumes:
+      - ./credentials:/app/credentials
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+      - ./db:/app/db
+      - ./data.json:/app/data.json
+    networks:
+      - internal
+
+networks:
+  internal:
