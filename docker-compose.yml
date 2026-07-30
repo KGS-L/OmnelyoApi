@@ -10,6 +10,7 @@ services:
       - ./storage:/app/storage
       - ./logs:/app/logs
       - ./db:/app/db
+      # Montage du fichier seul (pas du dossier). S'assurer qu'il existe : touch data.json
       - ./data.json:/app/data.json
     networks:
       - internal
@@ -34,6 +35,7 @@ services:
 
 networks:
   internal:
+    driver: bridge   # Réseau interne partagé entre le bot et Caddy
 
 volumes:
   caddy_data:
