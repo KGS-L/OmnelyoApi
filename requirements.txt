@@ -1,0 +1,36 @@
+# --- Telegram bot ---
+python-telegram-bot>=21.0
+
+# --- Téléchargement vidéo ---
+yt-dlp>=2024.8.6
+
+# --- Découpage / traitement vidéo ---
+moviepy>=1.0.3
+scenedetect[opencv]>=0.6.4
+ffmpeg-python>=0.2.0
+
+# --- Génération contenu IA ---
+anthropic>=0.34.0        # ou openai selon le LLM choisi pour le storytime
+elevenlabs>=1.5.0        # TTS (alternative: openai TTS)
+
+# --- Overlay / card visuelle ---
+Pillow>=10.4.0
+playwright>=1.46.0        # si rendu HTML->image pour la card
+
+# --- Stockage Cloudflare R2 ---
+boto3>=1.34.0             # R2 est compatible API S3
+
+# --- Serveur callback OAuth ---
+Flask>=3.0.3
+
+# --- YouTube API ---
+google-api-python-client>=2.140.0
+google-auth-oauthlib>=1.2.1
+google-auth-httplib2>=0.2.0
+
+# --- DB ---
+SQLAlchemy>=2.0.32         # ORM léger sur SQLite
+
+# --- Utilitaires ---
+python-dotenv>=1.0.1
+APScheduler>=3.10.4        # scheduling / cron interne
