@@ -32,8 +32,8 @@ SCOPES = [
 
 # Stockage temporaire des states OAuth (anti-CSRF)
 # En production multi-instance : remplacer par Redis
-# Structure: {state: (expiry: datetime, user_id: int|None)}
-_pending_states: dict[str, tuple[datetime, int | None]] = {}
+# Structure: {state: (expiry: datetime, user_id: int|None, flow: Flow)}
+_pending_states: dict[str, tuple[datetime, int | None, Flow]] = {}
 
 
 def _build_flow() -> Flow:
@@ -63,8 +63,9 @@ def generate_auth_url(user_id: int | None = None) -> tuple[str, str]:
         prompt="consent",            # force le renvoi du refresh_token
     )
     
-    # Stocker le state avec expiration (10 minutes) et user_id associé
-    _pending_states[state] = (datetime.now() + timedelta(minutes=10), user_id)
+    # Stocker le state avec expiration, user_id ET le flow (contient le code_verifier PKCE)
+    # IMPORTANT: réutiliser ce même flow lors de l'échange pour éviter "Missing code verifier"
+    _pending_states[state] = (datetime.now() + timedelta(minutes=10), user_id, flow)
     
     logger.info("Auth URL générée", extra={"user_id": user_id})
     return auth_url, state
@@ -83,7 +84,7 @@ def exchange_code_for_token(code: str, state: str, user_id: int | None = None) -
         logger.warning("State invalide ou inconnu", extra={"state_prefix": state[:8] if state else None})
         raise RuntimeError("Session invalide ou expirée. Recommence avec /connect_youtube.")
     
-    expiry, expected_user_id = _pending_states.pop(state)
+    expiry, expected_user_id, flow = _pending_states.pop(state)
     
     # Vérifier expiration
     if datetime.now() > expiry:
@@ -98,7 +99,7 @@ def exchange_code_for_token(code: str, state: str, user_id: int | None = None) -
     resolved_user_id = user_id if user_id is not None else expected_user_id
 
     # --- Échange OAuth avec Google ---
-    flow = _build_flow()
+    # Réutilise le MÊME flow qui a généré l'URL (conserve le code_verifier PKCE)
     try:
         flow.fetch_token(code=code)
     except Exception as e:

@@ -2,6 +2,11 @@ credentials/client_secret.json
 .env
 data.json
 db/robot_short_yt.sqlite3
-db/__pycache__/
-core/__pycache__/
+db/__pycache__
+core/__pycache__
 logs/bot.log
+credentials/
+bot/__pycache__/
+scheduler/__pycache__/
+storage/tmp/
+__pycache__/

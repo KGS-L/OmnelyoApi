@@ -14,6 +14,16 @@ services:
       - ./db:/app/db
       # Montage du fichier seul (pas du dossier). S'assurer qu'il existe : touch data.json
       - ./data.json:/app/data.json
+      # Hot-reload : monte le code source local dans le conteneur
+      # Les modifications de .py sont immédiatement visibles sans rebuild
+      - .:/app
+    # Remplace le CMD du Dockerfile : watchmedo redémarre main.py à chaque changement de .py
+    command: >
+      watchmedo auto-restart
+        --patterns="*.py"
+        --recursive
+        --
+        python main.py
     networks:
       - internal
 

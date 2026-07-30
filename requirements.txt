@@ -34,3 +34,4 @@ SQLAlchemy>=2.0.32         # ORM léger sur SQLite
 # --- Utilitaires ---
 python-dotenv>=1.0.1
 APScheduler>=3.10.4        # scheduling / cron interne
+watchdog>=4.0.0            # hot-reload en développement (watchmedo)

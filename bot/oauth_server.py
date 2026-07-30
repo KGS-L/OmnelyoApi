@@ -192,10 +192,9 @@ def run_oauth_server() -> None:
     0.0.0.0 nécessaire pour le conteneur Docker ; le port n'est JAMAIS
     exposé publiquement (Caddy uniquement via réseau interne).
     """
-    # Désactiver le logging Werkzeug par défaut (trop verbeux)
-    import werkzeug
-    werkzeug.log.disabled = True
-    app.logger.disabled = True
+    # Réduire le logging Werkzeug (trop verbeux)
+    import logging as _logging
+    _logging.getLogger("werkzeug").setLevel(_logging.WARNING)
 
     logger.info(
         "Starting OAuth callback server",
