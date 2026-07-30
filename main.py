@@ -37,9 +37,9 @@ def main() -> None:
     start_oauth_server()
     logger.info("Serveur OAuth démarré")
     
-    # TODO: démarrer APScheduler pour le watchdog quotidien
-    # from core.scheduler import start_scheduler
-    # start_scheduler()
+    # Démarrer le planificateur de tâches pour le watchdog
+    from scheduler.watchdog import start_scheduler
+    start_scheduler()
     
     # Lancer le bot Telegram (bloquant, en dernier)
     start_bot()

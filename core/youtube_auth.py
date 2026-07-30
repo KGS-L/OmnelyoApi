@@ -70,12 +70,13 @@ def generate_auth_url(user_id: int | None = None) -> tuple[str, str]:
     return auth_url, state
 
 
-def exchange_code_for_token(code: str, state: str, user_id: int | None = None) -> None:
+def exchange_code_for_token(code: str, state: str, user_id: int | None = None) -> int | None:
     """
     Appelé par le serveur callback (bot/oauth_server.py) une fois le `code`
     reçu de Google. Échange le code contre des credentials et les sauvegarde.
     
     Lève RuntimeError en cas de problème (state invalide, échec Google, etc.)
+    Retourne le user_id résolu.
     """
     # --- Validation CSRF du state ---
     if state not in _pending_states:
@@ -93,6 +94,9 @@ def exchange_code_for_token(code: str, state: str, user_id: int | None = None) -
         logger.warning("Mismatch user_id", extra={"expected": expected_user_id, "got": user_id})
         raise RuntimeError("Session utilisateur invalide.")
     
+    # Résoudre le user_id réel
+    resolved_user_id = user_id if user_id is not None else expected_user_id
+
     # --- Échange OAuth avec Google ---
     flow = _build_flow()
     try:
@@ -104,14 +108,15 @@ def exchange_code_for_token(code: str, state: str, user_id: int | None = None) -
     creds = flow.credentials
     
     # --- Persistance atomique du token ---
-    token_path = _token_path(user_id)
+    token_path = _token_path(resolved_user_id)
     token_path.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write(token_path, creds.to_json())
     
     logger.info(
         "Token sauvegardé",
-        extra={"user_id": user_id, "has_refresh": bool(creds.refresh_token)}
+        extra={"user_id": resolved_user_id, "has_refresh": bool(creds.refresh_token)}
     )
+    return resolved_user_id
 
 
 def _token_path(user_id: int | None) -> Path:

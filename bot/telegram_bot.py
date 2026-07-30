@@ -8,7 +8,7 @@ from bot import handlers
 
 def build_bot() -> Application:
     """Construit l'application Telegram avec tous les handlers enregistrés."""
-    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).post_init(handlers.post_init).build()
     handlers.register_handlers(app)
     return app
 

@@ -92,7 +92,7 @@ def oauth2callback() -> tuple[str, int]:
 
     # --- Échange du code contre le token ---
     try:
-        youtube_auth.exchange_code_for_token(
+        resolved_user_id = youtube_auth.exchange_code_for_token(
             code=code,
             state=state,
             user_id=int(user_id) if user_id else None,
@@ -118,7 +118,7 @@ def oauth2callback() -> tuple[str, int]:
     logger.info("OAuth successful, notifying bot")
     if _on_connected_callback:
         try:
-            _on_connected_callback(user_id=int(user_id) if user_id else None)
+            _on_connected_callback(user_id=resolved_user_id)
         except Exception:
             logger.exception("Post-connection callback failed (non-critical)")
 
