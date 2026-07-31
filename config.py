@@ -37,8 +37,9 @@ R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "robot-short-yt")
 R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL", "")
 
 # --- LLM ---
-XAI_API_KEY = os.getenv("XAI_API_KEY")
-XAI_MODEL = os.getenv("XAI_MODEL")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL")
+
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 
 # --- Scheduling ---

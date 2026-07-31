@@ -9,8 +9,8 @@ from openai import OpenAI
 import config
 
 _client = OpenAI(
-    api_key=config.XAI_API_KEY,
-    base_url="https://api.x.ai/v1",
+    api_key=config.GROQ_API_KEY,
+    base_url="https://api.groq.com/openai/v1",
 )
 
 # ~150 mots/min de lecture naturelle pour du storytime (rythme oral, pas de lecture rapide)
@@ -35,8 +35,12 @@ def generate_story(theme_hint: str, target_duration_sec: float) -> str:
 
     response = _client.chat.completions.create(
         model=config.XAI_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.9,
+        messages=[
+            {"role": "user", "content": prompt}
+        ],
+        temperature=1,
+        max_completion_tokens=2048,
+        reasoning_effort="medium",
     )
 
     return response.choices[0].message.content.strip()
