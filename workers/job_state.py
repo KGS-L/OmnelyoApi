@@ -42,7 +42,14 @@ def claim_next_job(
     return job
 
 
-def heartbeat_job(db: Session, job_id: uuid.UUID, worker_id: str) -> bool:
+def heartbeat_job(
+    db: Session,
+    job_id: uuid.UUID,
+    worker_id: str,
+    progress: int | None = None,
+) -> bool:
+    if progress is not None and not 0 <= progress < 100:
+        raise ValueError("La progression active doit être comprise entre 0 et 99.")
     job = db.scalar(
         select(Job).where(
             Job.id == job_id,
@@ -54,6 +61,8 @@ def heartbeat_job(db: Session, job_id: uuid.UUID, worker_id: str) -> bool:
         db.rollback()
         return False
     job.heartbeat_at = datetime.now(timezone.utc)
+    if progress is not None:
+        job.progress = max(job.progress, progress)
     db.commit()
     return True
 

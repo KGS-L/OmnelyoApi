@@ -9,6 +9,7 @@ from sqlalchemy import select
 from api.database import SessionLocal
 from api.models import Job, JobType, Video, VideoKind, VideoStatus
 from workers.registry import registry
+from core.storage_keys import job_clip_key
 
 
 def process_video(job: Job, heartbeat) -> dict:
@@ -30,8 +31,9 @@ def process_video(job: Job, heartbeat) -> dict:
     )
     source_path = work_dir / "source" / Path(source.storage_key).name
     try:
-        _require_lease(heartbeat, "avant la récupération de la source")
+        _require_lease(heartbeat, "avant la récupération de la source", 5)
         download_from_r2(source.storage_key, source_path)
+        _require_lease(heartbeat, "avant la détection des scènes", 15)
         scenes = detect_scenes(source_path)
         ranges = merge_scenes_to_clip_ranges(
             scenes, config.CLIP_MIN_DURATION_SEC, config.CLIP_MAX_DURATION_SEC
@@ -40,7 +42,8 @@ def process_video(job: Job, heartbeat) -> dict:
             raise RuntimeError("Aucune plage de clip n'a été générée.")
         clip_ids: list[str] = []
         for sequence, (start_sec, end_sec) in enumerate(ranges, start=1):
-            _require_lease(heartbeat, f"avant le clip {sequence}")
+            progress = 20 + int(70 * (sequence - 1) / len(ranges))
+            _require_lease(heartbeat, f"avant le clip {sequence}", progress)
             clip = _existing_ready_clip(source.id, sequence)
             if clip is None:
                 clip = _render_clip(
@@ -128,10 +131,7 @@ def _render_clip(
     final_path = work_dir / "clips" / f"{sequence:03d}_short.mp4"
     cut_clip(source_path, start_sec, end_sec, raw_path, remove_audio=True)
     process_for_short(raw_path, final_path)
-    storage_key = (
-        f"workspaces/{job.workspace_id}/videos/{source.id}/clips/"
-        f"{sequence:03d}.mp4"
-    )
+    storage_key = job_clip_key(job.workspace_id, job.id, sequence)
     upload_to_r2(final_path, storage_key)
     duration = end_sec - start_sec
     with SessionLocal() as db:
@@ -161,8 +161,8 @@ def _render_clip(
         return clip
 
 
-def _require_lease(heartbeat, stage: str) -> None:
-    if not heartbeat():
+def _require_lease(heartbeat, stage: str, progress: int | None = None) -> None:
+    if not heartbeat(progress):
         raise RuntimeError(f"Lease du job perdue {stage}.")
 
 

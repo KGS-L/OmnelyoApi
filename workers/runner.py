@@ -76,9 +76,11 @@ class WorkerRunner:
             logger.error("Job %s revendiqué sans handler", job.id)
             return False
 
-        def heartbeat() -> bool:
+        def heartbeat(progress: int | None = None) -> bool:
             with SessionLocal() as heartbeat_db:
-                return heartbeat_job(heartbeat_db, job.id, self.worker_id)
+                return heartbeat_job(
+                    heartbeat_db, job.id, self.worker_id, progress=progress
+                )
 
         heartbeat_stop = Event()
         heartbeat_thread = Thread(

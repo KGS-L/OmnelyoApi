@@ -188,6 +188,30 @@ class TelegramConnection(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AuditEvent(Base):
+    """Trace append-only des mutations effectuées via l'API SaaS."""
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="SET NULL"), index=True
+    )
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(32), index=True)
+    resource_path: Mapped[str] = mapped_column(String(2048))
+    request_id: Mapped[str] = mapped_column(String(128), index=True)
+    response_status: Mapped[int] = mapped_column(Integer)
+    details: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
 class SocialConnection(Base):
     """Credentials OAuth chiffrés d'un fournisseur pour un workspace."""
 

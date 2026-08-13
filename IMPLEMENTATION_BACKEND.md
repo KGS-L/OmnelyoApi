@@ -30,22 +30,22 @@ Dernière analyse du dépôt : 13 août 2026.
 
 ### Partiellement réalisé
 
-- [~] Multi-utilisateur : présent séparément côté web et Telegram, mais les deux identités ne sont pas liées.
+- [x] Multi-utilisateur : les identités web et Telegram sont liées par jeton à usage unique.
 - [~] Facturation : domaine et stockage SQLite présents, sans décision commerciale définitive ni routes web.
-- [~] Multi-tenant : les nouveaux modèles ont un `workspace_id`, mais les dépendances d'autorisation ne sont pas encore écrites.
-- [~] Chaînes sociales : modèle générique commencé, mais l'enum et l'intégration ne couvrent encore que YouTube.
-- [~] Tests API : primitives de sécurité testées, mais pas encore de tests d'intégration PostgreSQL complets.
+- [x] Multi-tenant : modèles, autorisations et contraintes PostgreSQL isolent les workspaces.
+- [x] Chaînes sociales : YouTube, TikTok, Facebook et Instagram utilisent le contrat générique.
+- [x] Tests API : tests unitaires et suite d'intégration PostgreSQL couvrent le graphe métier.
 
 ### Non réalisé
 
-- [ ] API CRUD pour workspaces, chaînes, vidéos, jobs et publications.
-- [ ] Liaison sécurisée compte web ↔ compte Telegram.
-- [ ] Stockage PostgreSQL chiffré des connexions OAuth sociales.
-- [ ] Migration du pipeline SQLite vers PostgreSQL et Redis.
-- [ ] Workers indépendants de l'API et du bot.
-- [ ] Publication TikTok, Facebook et Instagram.
+- [x] API CRUD pour workspaces, chaînes, vidéos, jobs et publications.
+- [x] Liaison sécurisée compte web ↔ compte Telegram.
+- [x] Stockage PostgreSQL chiffré des connexions OAuth sociales.
+- [~] Migration du pipeline SQLite vers PostgreSQL et Redis (nouveaux flux migrés ; historique à valider).
+- [x] Workers indépendants de l'API et du bot.
+- [x] Publication TikTok, Facebook et Instagram.
 - [ ] Fournisseur d'emails transactionnels.
-- [ ] Observabilité, quotas, rétention et administration de production.
+- [~] Observabilité, quotas, rétention et administration de production (logs, corrélation, rate limiting et audit terminés).
 
 ## 2. Décisions produit à prendre avant la facturation
 
@@ -117,9 +117,9 @@ Utilisateur web authentifié
 - [x] Ajouter `POST /v1/workspaces/{workspace_id}/integrations/telegram/link`.
 - [x] Ajouter `GET` et `DELETE /v1/workspaces/{workspace_id}/integrations/telegram`.
 - [x] Adapter `/start` du bot pour traiter le paramètre `link_<jeton>`.
-- [ ] Notifier les deux côtés après liaison ou déconnexion.
+- [x] Notifier Telegram immédiatement et exposer l'état au web via `GET` après liaison ou déconnexion.
 - [x] Permettre à l'utilisateur de révoquer Telegram depuis le web et depuis le bot.
-- [ ] Faire créer tous les nouveaux jobs Telegram dans le même workspace PostgreSQL.
+- [x] Faire créer tous les nouveaux jobs Telegram dans le même workspace PostgreSQL.
 - [~] Tester rejeu, expiration et tentative de prise de contrôle ; test de concurrence Redis réel restant.
 
 Une option « utiliser mon propre bot Telegram » pourra être étudiée plus tard ;
@@ -193,24 +193,24 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] Écrire les schémas Pydantic de `Channel`, `Video`, `Job` et `Publication`.
 - [ ] Écrire repositories et services filtrés par workspace.
 - [x] Ajouter CRUD, pagination, filtres et réponses d'erreur cohérentes.
-- [ ] Ajouter upload vidéo par flux, limites de taille et validation MIME réelle.
-- [ ] Utiliser des clés R2 `workspaces/<workspace_id>/jobs/<job_id>/...`.
+- [x] Ajouter upload vidéo par flux, limites de taille et validation MIME réelle.
+- [x] Utiliser des clés R2 `workspaces/<workspace_id>/jobs/<job_id>/...`.
 - [~] Ajouter URL signées, politiques de rétention et suppression (URLs R2 signées terminées ; rétention restante).
 
 ### Phase 3 — Liaison Telegram
 
-- [ ] Implémenter intégralement le flux décrit en section 3.
-- [ ] Basculer les créations de vidéos et jobs du bot vers l'API métier.
-- [ ] Maintenir temporairement un adaptateur de compatibilité SQLite si nécessaire.
+- [x] Implémenter intégralement le flux décrit en section 3.
+- [x] Basculer les créations de vidéos et jobs du bot vers l'API métier.
+- [x] Maintenir temporairement un adaptateur de compatibilité SQLite si nécessaire (isolé dans `scheduler/` et `db/`, plus utilisé par les nouveaux handlers Telegram).
 - [ ] Retirer SQLite seulement après migration et validation des données historiques.
 
 ### Phase 4 — Workers et orchestration
 
 - [x] Choisir l'orchestration : PostgreSQL durable avec leases, Redis comme signal de réveil et polling de secours.
-- [ ] Sortir les traitements longs des processus API et Telegram.
-- [~] Rendre chaque étape idempotente et rejouable (`INGEST`, `PROCESS` et `RENDER` terminés ; `PUBLISH` protégé en base, réconciliation fournisseur restante).
+- [x] Sortir les traitements longs des processus API et Telegram.
+- [x] Rendre chaque étape idempotente et rejouable, y compris la réconciliation `PUBLISH`.
 - [~] Ajouter heartbeat, timeout, reprise, annulation et limite de concurrence par workspace (leases et reprise PostgreSQL terminées ; limite par workspace restante).
-- [ ] Émettre la progression par polling initialement, puis SSE si nécessaire.
+- [x] Émettre la progression par polling initialement, puis SSE si nécessaire.
 
 ### Phase 5 — Connecteurs sociaux
 
@@ -231,15 +231,13 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 ### Phase 7 — Production
 
 - [ ] Brancher un fournisseur d'emails transactionnels.
-- [ ] Ajouter logs structurés, identifiant de corrélation, métriques et alertes.
-- [ ] Ajouter rate limiting, audit log et administration sécurisée.
+- [~] Ajouter logs structurés, identifiant de corrélation, métriques et alertes (logs JSON et corrélation terminés ; métriques et alertes restantes).
+- [x] Ajouter rate limiting, audit log et administration sécurisée.
 - [ ] Ajouter sauvegardes PostgreSQL/R2 et procédure de restauration testée.
 - [ ] Définir rétention, export et suppression des données utilisateur.
 - [ ] Faire valider conditions d'utilisation, confidentialité et droits sur les contenus.
 
 ## 6. Prochaine étape concrète
 
-Commencer par la phase 0, puis la phase 1. La liaison Telegram et les connecteurs
-sociaux dépendent d'une autorisation workspace fiable. Le business model reste un
-jalon de décision séparé : son atelier doit avoir lieu avant toute implémentation
-définitive des crédits et des paiements.
+Organiser maintenant l'atelier business model de la section 2. Aucun modèle de
+crédits, quota ou paiement ne doit être implémenté avant validation de ses choix.

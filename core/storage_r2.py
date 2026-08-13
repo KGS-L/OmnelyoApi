@@ -100,6 +100,19 @@ def download_from_r2(remote_key: str, destination: Path) -> Path:
     return destination
 
 
+def delete_from_r2(remote_key: str) -> None:
+    """Supprime un objet privé, y compris dans le stockage local de secours."""
+    remote_key = _validate_remote_key(remote_key)
+    if not all([config.R2_ACCESS_KEY_ID, config.R2_SECRET_ACCESS_KEY, config.R2_ENDPOINT_URL]):
+        (config.PROCESSED_DIR / remote_key).unlink(missing_ok=True)
+        return
+    try:
+        _client().delete_object(Bucket=config.R2_BUCKET_NAME, Key=remote_key)
+    except Exception as exc:
+        logger.exception("Échec de suppression depuis Cloudflare R2")
+        raise RuntimeError("Impossible de supprimer l'objet R2.") from exc
+
+
 def create_presigned_download_url(remote_key: str, expires_in: int = 900) -> str:
     """Crée une URL GET temporaire sans rendre le bucket public."""
     remote_key = _validate_remote_key(remote_key)

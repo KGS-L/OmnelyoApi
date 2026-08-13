@@ -1,9 +1,12 @@
 """Tests du registre et du signal de réveil des workers."""
 import unittest
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from redis.exceptions import ConnectionError
 
-from api.models import JobType
+from api.models import JobStatus, JobType
+from workers.job_state import heartbeat_job
 from workers.registry import HandlerRegistry
 from workers.signals import notify_workers
 
@@ -49,6 +52,24 @@ class WorkerSignalTests(unittest.TestCase):
         with self.assertLogs("workers.signals", level="WARNING") as logs:
             self.assertFalse(notify_workers(FakeRedis(fail=True), "job-1"))
         self.assertIn("polling PostgreSQL", logs.output[0])
+
+
+class WorkerProgressTests(unittest.TestCase):
+    def test_heartbeat_advances_progress_without_regression(self):
+        db = MagicMock()
+        job = SimpleNamespace(
+            status=JobStatus.RUNNING, worker_id="worker", progress=40,
+            heartbeat_at=None,
+        )
+        db.scalar.return_value = job
+        self.assertTrue(heartbeat_job(db, object(), "worker", progress=70))
+        self.assertEqual(job.progress, 70)
+        self.assertTrue(heartbeat_job(db, object(), "worker", progress=20))
+        self.assertEqual(job.progress, 70)
+
+    def test_heartbeat_rejects_completed_progress(self):
+        with self.assertRaises(ValueError):
+            heartbeat_job(MagicMock(), object(), "worker", progress=100)
 
 
 if __name__ == "__main__":

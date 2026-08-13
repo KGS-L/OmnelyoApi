@@ -8,6 +8,7 @@ from sqlalchemy import select
 from api.database import SessionLocal
 from api.models import Job, JobType, Video, VideoKind, VideoStatus
 from workers.registry import registry
+from core.storage_keys import job_rendered_key
 
 DEFAULT_THEME = "histoire intrigante ou fait insolite"
 
@@ -34,17 +35,18 @@ def render_video(job: Job, heartbeat) -> dict:
     card_path = work_dir / "render" / "card.png"
     output_path = work_dir / "render" / "final.mp4"
     try:
-        _require_lease(heartbeat, "avant la récupération du clip")
+        _require_lease(heartbeat, "avant la récupération du clip", 5)
         download_from_r2(clip.storage_key, input_path)
+        _require_lease(heartbeat, "avant la génération du récit", 20)
         narration = clip.narration_text or generate_story(
             _theme(job), clip.duration_seconds or 60
         )
         _persist_narration(clip.id, narration)
-        _require_lease(heartbeat, "avant la synthèse vocale")
+        _require_lease(heartbeat, "avant la synthèse vocale", 40)
         generate_tts(narration, audio_path)
         card_text = narration[:120] + ("..." if len(narration) > 120 else "")
         render_comment_card(card_text, card_path)
-        _require_lease(heartbeat, "avant le rendu final")
+        _require_lease(heartbeat, "avant le rendu final", 65)
         overlay_card_on_video(
             input_path,
             card_path,
@@ -52,11 +54,9 @@ def render_video(job: Job, heartbeat) -> dict:
             output_path=output_path,
             audio_path=audio_path,
         )
-        rendered_key = (
-            f"workspaces/{job.workspace_id}/videos/{clip.parent_video_id}/rendered/"
-            f"{clip.sequence_order:03d}.mp4"
-        )
+        rendered_key = job_rendered_key(job.workspace_id, job.id)
         upload_to_r2(output_path, rendered_key)
+        _require_lease(heartbeat, "après l'archivage du rendu", 90)
         with SessionLocal() as db:
             persisted = db.get(Video, clip.id)
             persisted.rendered_storage_key = rendered_key
@@ -126,8 +126,8 @@ def _result(clip: Video) -> dict:
     }
 
 
-def _require_lease(heartbeat, stage: str) -> None:
-    if not heartbeat():
+def _require_lease(heartbeat, stage: str, progress: int | None = None) -> None:
+    if not heartbeat(progress):
         raise RuntimeError(f"Lease du job perdue {stage}.")
 
 

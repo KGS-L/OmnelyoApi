@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
@@ -11,9 +11,63 @@ from api.database import get_db
 from api.config import APISettings, get_settings
 from api.dependencies import get_current_workspace_membership, require_workspace_roles
 from api.models import Job, Publication, Video, VideoStatus, WorkspaceMembership, WorkspaceRole
+from api.media_upload import detect_video_type, stream_upload
+from core.storage_keys import belongs_to_workspace, upload_source_key
 from api.schemas import VideoCreate, VideoDownloadURLResponse, VideoResponse, VideoUpdate
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/videos", tags=["videos"])
+
+
+@router.post("/upload", response_model=VideoResponse, status_code=status.HTTP_201_CREATED)
+async def upload_video(
+    workspace_id: uuid.UUID,
+    membership: Annotated[
+        WorkspaceMembership, Depends(get_current_workspace_membership)
+    ],
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[APISettings, Depends(get_settings)],
+    file: Annotated[UploadFile, File()],
+    title: Annotated[str | None, Form(max_length=255)] = None,
+) -> Video:
+    """Reçoit une vidéo par morceaux, vérifie sa signature puis l'archive."""
+    from core.storage_r2 import delete_from_r2, upload_to_r2
+    import config
+
+    video_id = uuid.uuid4()
+    temporary = (
+        config.TMP_DIR / "workspaces" / str(workspace_id) / "uploads" / f"{video_id}.part"
+    )
+    storage_key = None
+    try:
+        await stream_upload(file, temporary, settings.video_upload_max_bytes)
+        with temporary.open("rb") as uploaded_file:
+            mime_type, suffix = detect_video_type(uploaded_file.read(32))
+        storage_key = upload_source_key(workspace_id, video_id, suffix)
+        upload_to_r2(temporary, storage_key)
+        video = Video(
+            id=video_id,
+            workspace_id=workspace_id,
+            title=title.strip() if title and title.strip() else file.filename,
+            storage_key=storage_key,
+            mime_type=mime_type,
+            status=VideoStatus.UPLOADED,
+        )
+        db.add(video)
+        db.commit()
+        db.refresh(video)
+        return video
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        if storage_key is not None:
+            try:
+                delete_from_r2(storage_key)
+            except RuntimeError:
+                pass
+        raise
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _get_video(db: Session, workspace_id: uuid.UUID, video_id: uuid.UUID) -> Video:
@@ -76,8 +130,7 @@ def get_video_download_url(
     storage_key = video.rendered_storage_key if artifact == "rendered" else video.storage_key
     if not storage_key:
         raise HTTPException(status_code=404, detail="Cet artefact vidéo n'est pas disponible.")
-    expected_prefix = f"workspaces/{workspace_id}/"
-    if not storage_key.startswith(expected_prefix):
+    if not belongs_to_workspace(storage_key, workspace_id):
         raise HTTPException(status_code=409, detail="La clé de stockage n'est pas isolée par workspace.")
     try:
         url = create_presigned_download_url(

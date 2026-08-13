@@ -3,6 +3,7 @@ import unittest
 
 try:
     from api.models import (
+        AuditEvent,
         Base,
         Channel,
         ChannelPlatform,
@@ -14,11 +15,18 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name != "sqlalchemy":
         raise
-    Base = Channel = ChannelPlatform = Job = Publication = SocialConnection = TelegramConnection = None
+    AuditEvent = Base = Channel = ChannelPlatform = Job = Publication = SocialConnection = TelegramConnection = None
 
 
 @unittest.skipUnless(Base is not None, "SQLAlchemy n'est pas installé")
 class ContentModelsTests(unittest.TestCase):
+    def test_audit_events_are_workspace_scoped_and_correlated(self):
+        table = AuditEvent.__table__
+        self.assertIn("workspace_id", table.c)
+        self.assertIn("actor_user_id", table.c)
+        self.assertIn("request_id", table.c)
+        self.assertIn("response_status", table.c)
+
     def test_content_tables_are_registered(self):
         self.assertTrue({"channels", "videos", "jobs", "publications"}.issubset(Base.metadata.tables))
 

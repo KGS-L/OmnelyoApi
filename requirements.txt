@@ -34,6 +34,7 @@ alembic>=1.13.2            # migrations PostgreSQL
 
 # --- API SaaS / authentification ---
 fastapi>=0.115.0
+python-multipart>=0.0.9
 uvicorn[standard]>=0.30.0
 pydantic-settings>=2.4.0
 PyJWT[crypto]>=2.9.0

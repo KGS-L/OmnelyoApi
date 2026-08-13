@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from api.database import SessionLocal
 from api.models import Job, JobType, Video, VideoStatus
 from workers.registry import registry
+from core.storage_keys import job_source_key
 
 
 def validate_public_source_url(url: str) -> None:
@@ -60,16 +61,17 @@ def ingest_video(job: Job, heartbeat) -> dict:
         / str(job.id)
     )
     try:
-        if not heartbeat():
+        if not heartbeat(10):
             raise RuntimeError("Lease du job perdue avant le téléchargement.")
         downloaded_path = download_video(source_url, work_dir)
-        if not heartbeat():
+        if not heartbeat(50):
             raise RuntimeError("Lease du job perdue après le téléchargement.")
-        storage_key = (
-            f"workspaces/{job.workspace_id}/jobs/{job.id}/source/"
-            f"{downloaded_path.name}"
+        storage_key = job_source_key(
+            job.workspace_id, job.id, downloaded_path.suffix or ".mp4"
         )
         upload_to_r2(downloaded_path, storage_key)
+        if not heartbeat(90):
+            raise RuntimeError("Lease du job perdue après l'archivage.")
         mime_type, _ = mimetypes.guess_type(downloaded_path.name)
         with SessionLocal() as db:
             video = db.get(Video, video_id)

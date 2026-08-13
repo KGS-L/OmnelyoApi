@@ -312,3 +312,17 @@ class TelegramConnectionResponse(BaseModel):
     status: TelegramConnectionStatus
     linked_at: datetime
     revoked_at: datetime | None
+
+
+class AuditEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID | None
+    actor_user_id: uuid.UUID | None
+    action: str
+    resource_path: str
+    request_id: str
+    response_status: int
+    details: dict | None
+    created_at: datetime

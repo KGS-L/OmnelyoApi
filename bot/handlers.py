@@ -5,6 +5,7 @@ Implémenté avec python-telegram-bot (async/await).
 import asyncio
 import html
 import logging
+import uuid
 from pathlib import Path
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -12,8 +13,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import config
 from bot import oauth_server
 from core import youtube_auth
-from scheduler import scheduler
-from scheduler import job_queue
 
 logger = logging.getLogger(__name__)
 
@@ -161,8 +160,6 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     user_id = update.effective_user.id
     youtube_ok = youtube_auth.is_connected(user_id=user_id)
     
-    remaining = scheduler.get_remaining_slots(user_id)
-
     def web_connection_active() -> bool:
         from api.database import SessionLocal
         from api.integrations.telegram import get_active_telegram_connection
@@ -180,9 +177,8 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         "📊 <b>État du robot</b>\n\n"
         f"YouTube : {'✅ Connecté' if youtube_ok else '❌ Non connecté'}\n"
         f"Compte web : {'✅ Connecté' if shortpilot_connected else '❌ Non connecté'}\n"
-        f"Créneaux restants aujourd'hui : {remaining}/{config.MAX_CLIPS_PER_DAY}\n"
-        f"Fuseau horaire : {config.TIMEZONE}\n"
-        f"Horaires prévus : {', '.join(config.PUBLISH_SLOTS)}"
+        "Pipeline : PostgreSQL / workers SaaS\n"
+        f"Fuseau horaire : {config.TIMEZONE}"
     )
     await update.message.reply_text(status_text, parse_mode="HTML")
 
@@ -225,24 +221,34 @@ async def cmd_disconnect_shortpilot(
 
 async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Affiche les derniers jobs de l'utilisateur."""
-    jobs = job_queue.list_user_jobs(update.effective_user.id)
+    def load_jobs():
+        from api.database import SessionLocal
+        from api.integrations.telegram_jobs import list_jobs_for_telegram
+
+        with SessionLocal() as db:
+            return list_jobs_for_telegram(db, update.effective_user.id)
+
+    try:
+        jobs = await asyncio.to_thread(load_jobs)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {html.escape(str(exc))}", parse_mode="HTML")
+        return
     if not jobs:
         await update.message.reply_text("📭 Ta file de traitements est vide.")
         return
     icons = {
         "queued": "⏳",
         "running": "⚙️",
-        "completed": "✅",
+        "succeeded": "✅",
         "failed": "❌",
         "cancelled": "🚫",
     }
-    labels = {"process_url": "lien", "publish_upload": "Short importé"}
     lines = ["📋 <b>Tes derniers traitements</b>"]
     for job in jobs:
-        title = html.escape(job["requested_title"] or labels.get(job["job_type"], "vidéo"))
+        job_status = job.status.value
         lines.append(
-            f"{icons.get(job['status'], '•')} <code>#{job['id']}</code> "
-            f"{title} — {job['status']}"
+            f"{icons.get(job_status, '•')} <code>#{job.id}</code> "
+            f"{job.type.value} — {job_status} ({job.progress} %)"
         )
     lines.append("\nAnnulation : <code>/cancel ID</code> (job en attente uniquement).")
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
@@ -250,11 +256,28 @@ async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Annule un job appartenant à l'utilisateur s'il n'a pas commencé."""
-    if not context.args or not context.args[0].lstrip("#").isdigit():
-        await update.message.reply_text("Utilisation : /cancel ID — exemple : /cancel 12")
+    if not context.args:
+        await update.message.reply_text("Utilisation : /cancel UUID")
         return
-    job_id = int(context.args[0].lstrip("#"))
-    if job_queue.cancel_job(job_id, update.effective_user.id):
+    try:
+        job_id = uuid.UUID(context.args[0].lstrip("#"))
+    except ValueError:
+        await update.message.reply_text("❌ L'identifiant du traitement est invalide.")
+        return
+
+    def cancel():
+        from api.database import SessionLocal
+        from api.integrations.telegram_jobs import cancel_job_from_telegram
+
+        with SessionLocal() as db:
+            return cancel_job_from_telegram(db, update.effective_user.id, job_id)
+
+    try:
+        cancelled = await asyncio.to_thread(cancel)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {html.escape(str(exc))}", parse_mode="HTML")
+        return
+    if cancelled:
         await update.message.reply_text(f"🚫 Traitement #{job_id} annulé.")
     else:
         await update.message.reply_text(
@@ -269,43 +292,39 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Gère la réception des messages textes (liens vidéos ou texte inconnu)."""
     user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
     text = update.message.text.strip()
     
     if text.startswith("http://") or text.startswith("https://"):
-        if not youtube_auth.is_connected(user_id=user_id):
-            await update.message.reply_text(
-                "❌ <b>YouTube non connecté</b>\n\n"
-                "Utilise d'abord /connect_youtube pour lier ta chaîne.",
-                parse_mode="HTML"
-            )
-            return
-
         await update.message.reply_text(
             "⏳ <b>Lien vidéo reçu !</b>\n\n"
             "Je l'ajoute à la file d'attente et lance le traitement. Tu seras notifié une fois terminé.",
             parse_mode="HTML"
         )
         
-        # Enregistrement en base de données
-        from db.database import get_connection
         try:
-            with get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO source_videos "
-                    "(telegram_user_id, telegram_chat_id, source_url, status) VALUES (?, ?, ?, ?)",
-                    (user_id, chat_id, text, "pending")
-                )
-                source_video_id = cursor.lastrowid
-                job_id = job_queue.enqueue_job(source_video_id, "process_url", conn=conn)
-                conn.commit()
+            def enqueue():
+                from redis import Redis
+                from api.config import get_settings
+                from api.database import SessionLocal
+                from api.integrations.telegram_jobs import enqueue_url_from_telegram
+                from workers.signals import notify_workers
+
+                settings = get_settings()
+                with SessionLocal() as db:
+                    job = enqueue_url_from_telegram(db, user_id, text)
+                notify_workers(Redis.from_url(settings.redis_url), str(job.id))
+                return job
+
+            job = await asyncio.to_thread(enqueue)
+        except ValueError as exc:
+            await update.message.reply_text(f"❌ {html.escape(str(exc))}", parse_mode="HTML")
+            return
         except Exception as e:
             logger.exception("Erreur lors de l'insertion en DB")
             await update.message.reply_text(f"❌ Erreur de base de données : {e}")
             return
 
-        await update.message.reply_text(f"📋 Traitement ajouté à la file : #{job_id}")
+        await update.message.reply_text(f"📋 Traitement ajouté à la file : #{job.id}")
         
     else:
         await update.message.reply_text(
@@ -316,18 +335,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def handle_video_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Télécharge, valide et met en file un Short envoyé dans Telegram."""
     from bot.upload_helpers import parse_upload_caption, validate_uploaded_short
-    from db.database import get_connection
 
     message = update.effective_message
     user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
     media = message.video or message.document
-
-    if not youtube_auth.is_connected(user_id=user_id):
-        await message.reply_text(
-            "❌ Connecte d'abord ta chaîne avec /connect_youtube."
-        )
-        return
 
     if message.document and not (message.document.mime_type or "").startswith("video/"):
         await message.reply_text("❌ Ce document n'est pas identifié comme une vidéo.")
@@ -363,32 +374,31 @@ async def handle_video_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         await telegram_file.download_to_drive(custom_path=destination)
         duration, width, height = await asyncio.to_thread(validate_uploaded_short, destination)
 
-        with get_connection() as conn:
-            cursor = conn.execute(
-                "INSERT INTO source_videos "
-                "(telegram_user_id, telegram_chat_id, source_type, source_url, local_path, "
-                "requested_publish_at, requested_title, status) "
-                "VALUES (?, ?, 'upload', ?, ?, ?, ?, 'pending')",
-                (
-                    user_id,
-                    chat_id,
-                    f"telegram://{media.file_unique_id}",
-                    str(destination),
-                    upload_request.publish_at.isoformat() if upload_request.publish_at else None,
-                    upload_request.title,
-                ),
-            )
-            source_video_id = cursor.lastrowid
-            job_id = job_queue.enqueue_job(source_video_id, "publish_upload", conn=conn)
-            conn.commit()
+        def persist_upload():
+            from api.database import SessionLocal
+            from api.integrations.telegram_jobs import import_video_from_telegram
+            from api.media_upload import detect_video_type
+
+            with destination.open("rb") as uploaded_file:
+                mime_type, _ = detect_video_type(uploaded_file.read(32))
+            with SessionLocal() as db:
+                return import_video_from_telegram(
+                    db, user_id, destination, mime_type,
+                    duration, upload_request.title,
+                )
+
+        video = await asyncio.to_thread(persist_upload)
     except Exception as exc:
         destination.unlink(missing_ok=True)
         logger.exception("Échec de réception du Short Telegram")
         await message.reply_text(f"❌ Vidéo refusée : {html.escape(str(exc))}", parse_mode="HTML")
         return
+    destination.unlink(missing_ok=True)
 
     schedule_label = (
-        upload_request.publish_at.strftime("%d/%m/%Y à %H:%M")
+        "à confirmer dans l'interface web ("
+        + upload_request.publish_at.strftime("%d/%m/%Y à %H:%M")
+        + ")"
         if upload_request.publish_at
         else "prochain créneau disponible"
     )
@@ -396,7 +406,9 @@ async def handle_video_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"✅ Short accepté ({width}×{height}, {duration:.1f}s).\n"
         f"📅 Publication : {schedule_label}\n"
         f"🎬 Titre : {upload_request.title}\n"
-        f"📋 Traitement : #{job_id}"
+        f"📁 Vidéo importée : <code>{video.id}</code>\n"
+        "Choisis maintenant ses plateformes de publication dans l'interface web."
+        , parse_mode="HTML"
     )
 
 

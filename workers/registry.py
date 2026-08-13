@@ -4,7 +4,7 @@ from typing import Any
 
 from api.models import Job, JobType
 
-JobHandler = Callable[[Job, Callable[[], bool]], dict[str, Any] | None]
+JobHandler = Callable[[Job, Callable[[int | None], bool]], dict[str, Any] | None]
 
 
 class JobDeferred(Exception):

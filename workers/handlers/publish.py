@@ -72,7 +72,7 @@ def publish_video(job: Job, heartbeat) -> dict:
             context.connection_id, credentials, settings.social_credentials_key
         )
     if context.existing_external_id:
-        _require_lease(heartbeat, "avant la vérification fournisseur")
+        _require_lease(heartbeat, "avant la vérification fournisseur", 90)
         provider_status = publisher.get_status(
             credentials, context.existing_external_id
         )
@@ -87,7 +87,7 @@ def publish_video(job: Job, heartbeat) -> dict:
     )
     media_path = work_dir / "publish" / Path(context.storage_key).name
     try:
-        _require_lease(heartbeat, "avant le téléchargement du rendu")
+        _require_lease(heartbeat, "avant le téléchargement du rendu", 10)
         download_from_r2(context.storage_key, media_path)
         media_url = None
         if context.platform is ChannelPlatform.INSTAGRAM:
@@ -105,7 +105,7 @@ def publish_video(job: Job, heartbeat) -> dict:
             media_url=media_url,
         )
         publisher.validate_media(request)
-        _require_lease(heartbeat, "avant l'envoi vers la plateforme")
+        _require_lease(heartbeat, "avant l'envoi vers la plateforme", 60)
         result = publisher.publish(
             credentials, context.channel_external_id, request
         )
@@ -306,8 +306,8 @@ def _result(publication_id: uuid.UUID, external_id: str) -> dict:
     return {"publication_id": str(publication_id), "external_id": external_id}
 
 
-def _require_lease(heartbeat, stage: str) -> None:
-    if not heartbeat():
+def _require_lease(heartbeat, stage: str, progress: int | None = None) -> None:
+    if not heartbeat(progress):
         raise RuntimeError(f"Lease du job perdue {stage}.")
 
 

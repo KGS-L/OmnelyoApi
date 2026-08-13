@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,6 +21,7 @@ def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[APISettings, Depends(get_settings)],
+    request: Request = None,
 ) -> User:
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentification requise.")
@@ -31,6 +32,8 @@ def get_current_user(
     user = db.get(User, user_id)
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="Utilisateur inactif.")
+    if request is not None:
+        request.state.actor_user_id = user.id
     return user
 
 
@@ -38,6 +41,7 @@ def get_current_workspace_membership(
     workspace_id: uuid.UUID,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    request: Request = None,
 ) -> WorkspaceMembership:
     """Résout le workspace depuis l'URL et masque ceux auxquels l'utilisateur n'appartient pas."""
     membership = db.scalar(
@@ -48,6 +52,8 @@ def get_current_workspace_membership(
     )
     if not membership:
         raise HTTPException(status_code=404, detail="Workspace introuvable.")
+    if request is not None:
+        request.state.workspace_id = workspace_id
     return membership
 
 

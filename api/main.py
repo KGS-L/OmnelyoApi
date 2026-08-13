@@ -9,7 +9,9 @@ from api.integrations.tiktok import TikTokPublisher
 from api.integrations.facebook import FacebookPublisher
 from api.integrations.instagram import InstagramPublisher
 from api.models import ChannelPlatform
+from api.observability import RateLimitMiddleware, RequestContextMiddleware, configure_structured_logging
 from api.routes import (
+    audit,
     auth,
     channels,
     jobs,
@@ -22,6 +24,7 @@ from api.routes import (
 )
 
 settings = get_settings()
+configure_structured_logging()
 if not social_publishers.has(ChannelPlatform.YOUTUBE):
     social_publishers.register(YouTubePublisher(settings.youtube_client_secrets_file))
 if not social_publishers.has(ChannelPlatform.TIKTOK):
@@ -38,6 +41,13 @@ if not social_publishers.has(ChannelPlatform.INSTAGRAM):
     ))
 app = FastAPI(title=settings.app_name, version="0.1.0")
 app.add_middleware(
+    RateLimitMiddleware,
+    redis_url=settings.redis_url,
+    limit=settings.api_rate_limit_per_minute,
+    enabled=settings.api_rate_limit_enabled,
+)
+app.add_middleware(RequestContextMiddleware)
+app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
@@ -45,6 +55,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(auth.router, prefix="/v1")
+app.include_router(audit.router, prefix="/v1")
 app.include_router(users.router, prefix="/v1")
 app.include_router(workspaces.router, prefix="/v1")
 app.include_router(channels.router, prefix="/v1")
