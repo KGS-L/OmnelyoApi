@@ -118,7 +118,7 @@ Utilisateur web authentifié
 - [x] Ajouter `GET` et `DELETE /v1/workspaces/{workspace_id}/integrations/telegram`.
 - [x] Adapter `/start` du bot pour traiter le paramètre `link_<jeton>`.
 - [ ] Notifier les deux côtés après liaison ou déconnexion.
-- [ ] Permettre à l'utilisateur de révoquer Telegram depuis le web et depuis le bot.
+- [x] Permettre à l'utilisateur de révoquer Telegram depuis le web et depuis le bot.
 - [ ] Faire créer tous les nouveaux jobs Telegram dans le même workspace PostgreSQL.
 - [~] Tester rejeu, expiration et tentative de prise de contrôle ; test de concurrence Redis réel restant.
 

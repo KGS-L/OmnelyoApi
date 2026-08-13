@@ -100,3 +100,24 @@ def attach_telegram_account(
     db.commit()
     db.refresh(connection)
     return connection
+
+
+def get_active_telegram_connection(
+    db: Session, telegram_user_id: int
+) -> TelegramConnection | None:
+    return db.scalar(
+        select(TelegramConnection).where(
+            TelegramConnection.telegram_user_id == telegram_user_id,
+            TelegramConnection.status == TelegramConnectionStatus.ACTIVE,
+        )
+    )
+
+
+def revoke_telegram_account(db: Session, telegram_user_id: int) -> bool:
+    connection = get_active_telegram_connection(db, telegram_user_id)
+    if connection is None:
+        return False
+    connection.status = TelegramConnectionStatus.REVOKED
+    connection.revoked_at = datetime.now(timezone.utc)
+    db.commit()
+    return True

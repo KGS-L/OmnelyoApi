@@ -8,7 +8,12 @@ from sqlalchemy.orm import Session
 
 from api.config import get_settings
 from api.dependencies import get_current_workspace_membership
-from api.integrations.telegram import PendingTelegramLink, attach_telegram_account
+from api.integrations.telegram import (
+    PendingTelegramLink,
+    attach_telegram_account,
+    get_active_telegram_connection,
+    revoke_telegram_account,
+)
 from api.models import (
     Channel,
     ChannelPlatform,
@@ -232,6 +237,23 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
                 telegram_user_id=987654321,
                 telegram_chat_id=987654321,
             )
+
+    def test_telegram_connection_can_be_revoked_from_bot(self):
+        telegram_user_id = 456789123
+        attach_telegram_account(
+            self.db,
+            PendingTelegramLink(
+                user_id=self.user_a.id, workspace_id=self.workspace_a.id
+            ),
+            telegram_user_id=telegram_user_id,
+            telegram_chat_id=telegram_user_id,
+        )
+        self.assertIsNotNone(
+            get_active_telegram_connection(self.db, telegram_user_id)
+        )
+        self.assertTrue(revoke_telegram_account(self.db, telegram_user_id))
+        self.assertIsNone(get_active_telegram_connection(self.db, telegram_user_id))
+        self.assertFalse(revoke_telegram_account(self.db, telegram_user_id))
 
 
 if __name__ == "__main__":

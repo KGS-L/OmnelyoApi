@@ -75,6 +75,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "• /queue — Voir tes traitements\n"
         "• /cancel ID — Annuler un traitement en attente\n"
         "• /disconnect — Déconnecter YouTube\n"
+        "• /disconnect_shortpilot — Délier ce compte du site ShortPilot\n"
         "• /help — Afficher ce message\n\n"
         "<b>Créer depuis un lien :</b> envoie une URL YouTube/TikTok/etc.\n\n"
         "<b>Publier ton propre Short :</b> envoie une vidéo verticale de "
@@ -161,10 +162,24 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     youtube_ok = youtube_auth.is_connected(user_id=user_id)
     
     remaining = scheduler.get_remaining_slots(user_id)
+
+    def web_connection_active() -> bool:
+        from api.database import SessionLocal
+        from api.integrations.telegram import get_active_telegram_connection
+
+        with SessionLocal() as db:
+            return get_active_telegram_connection(db, user_id) is not None
+
+    try:
+        shortpilot_connected = await asyncio.to_thread(web_connection_active)
+    except Exception:
+        logger.warning("Statut de liaison web indisponible", exc_info=True)
+        shortpilot_connected = False
     
     status_text = (
         "📊 <b>État du robot</b>\n\n"
         f"YouTube : {'✅ Connecté' if youtube_ok else '❌ Non connecté'}\n"
+        f"Compte web : {'✅ Connecté' if shortpilot_connected else '❌ Non connecté'}\n"
         f"Créneaux restants aujourd'hui : {remaining}/{config.MAX_CLIPS_PER_DAY}\n"
         f"Fuseau horaire : {config.TIMEZONE}\n"
         f"Horaires prévus : {', '.join(config.PUBLISH_SLOTS)}"
@@ -180,6 +195,32 @@ async def cmd_disconnect(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("🔌 Déconnecté de YouTube. Utilise /connect_youtube pour reconnecter.")
     else:
         await update.message.reply_text("ℹ️ Aucune connexion YouTube active à déconnecter.")
+
+
+async def cmd_disconnect_shortpilot(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Révoque la liaison entre Telegram et le compte web ShortPilot."""
+    def revoke() -> bool:
+        from api.database import SessionLocal
+        from api.integrations.telegram import revoke_telegram_account
+
+        with SessionLocal() as db:
+            return revoke_telegram_account(db, update.effective_user.id)
+
+    try:
+        revoked = await asyncio.to_thread(revoke)
+    except Exception:
+        logger.exception("Échec de révocation de la liaison ShortPilot")
+        await update.message.reply_text("❌ La déconnexion a échoué. Réessaie plus tard.")
+        return
+    if revoked:
+        await update.message.reply_text(
+            "🔌 Ton compte Telegram est déconnecté du site ShortPilot.\n"
+            "Tu peux le reconnecter depuis Paramètres → Intégrations → Telegram."
+        )
+    else:
+        await update.message.reply_text("ℹ️ Ce compte Telegram n'est pas lié au site ShortPilot.")
 
 
 async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -378,6 +419,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("queue", cmd_queue))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("disconnect", cmd_disconnect))
+    app.add_handler(CommandHandler("disconnect_shortpilot", cmd_disconnect_shortpilot))
     app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_upload))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
