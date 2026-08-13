@@ -1,8 +1,31 @@
-# Les domaines viennent du fichier .env en production.
-{$BOT_DOMAIN:ton-domaine.com} {
-    reverse_proxy robot-short-yt:8420
+(security_headers) {
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
 }
 
-{$API_DOMAIN:api.ton-domaine.com} {
+{$APP_DOMAIN} {
+    import security_headers
+    encode zstd gzip
+    reverse_proxy frontend:3000
+}
+
+{$API_DOMAIN} {
+    import security_headers
+    encode zstd gzip
+    request_body {
+        max_size 550MB
+    }
     reverse_proxy api:8000
+}
+
+{$BOT_DOMAIN} {
+    import security_headers
+    encode zstd gzip
+    reverse_proxy robot-short-yt:8420
 }

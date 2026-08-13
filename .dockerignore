@@ -1,0 +1,16 @@
+.git
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.env
+.env.*
+!.env.example
+credentials
+storage
+logs
+db
+tests
+htmlcov
+.coverage

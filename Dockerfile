@@ -1,27 +1,28 @@
-# Robot Short Yt — image Docker
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
-# ffmpeg est requis par moviepy / ffmpeg-python pour le découpage vidéo
-# libgl1 et libglib2.0-0 sont requis par opencv (utilisé par PySceneDetect)
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libgl1 \
     libglib2.0-0 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-COPY requirements.txt .
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Optionnel : Navigateur headless pour Playwright (non requis par notre version Pillow d'overlay.py)
-# Supprimer ou commenter pour réduire la taille de l'image de ~70% (d'environ 2.5 Go à 800 Mo)
-RUN python -m playwright install --with-deps chromium || true
+RUN groupadd --system --gid 10001 shortpilot \
+    && useradd --system --uid 10001 --gid shortpilot --home-dir /app shortpilot
 
-COPY . .
+COPY --chown=shortpilot:shortpilot . .
+RUN mkdir -p /app/storage/tmp /app/logs /app/db \
+    && chown -R shortpilot:shortpilot /app/storage /app/logs /app/db
 
-# Port du serveur callback OAuth (bot/oauth_server.py), utilisé en interne
-# par le reverse proxy Caddy (voir docker-compose.yml)
-EXPOSE 8420
-
+USER shortpilot
+EXPOSE 8000 8420
 CMD ["python", "main.py"]

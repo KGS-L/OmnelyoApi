@@ -1,19 +1,82 @@
-# Production : `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+# Production : docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 services:
+  frontend:
+    restart: unless-stopped
+    init: true
+    build:
+      context: ../frontend
+      args:
+        NEXT_PUBLIC_API_URL: https://${API_DOMAIN:?API_DOMAIN est obligatoire}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:-}
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    networks: [internal]
+
+  api:
+    environment:
+      API_ENVIRONMENT: production
+      FRONTEND_ORIGINS: https://${APP_DOMAIN:?APP_DOMAIN est obligatoire}
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid,nodev
+      - /app/storage/tmp:size=1g,nosuid,nodev
+
+  worker:
+    environment:
+      API_ENVIRONMENT: production
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid,nodev
+      - /app/storage/tmp:size=2g,nosuid,nodev
+
+  robot-short-yt:
+    environment:
+      API_ENVIRONMENT: production
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    init: true
     env_file: [.env]
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - api
-      - robot-short-yt
+      frontend: {condition: service_healthy}
+      api: {condition: service_healthy}
+      robot-short-yt: {condition: service_started}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     networks: [internal]
 
 volumes:

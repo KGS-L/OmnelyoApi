@@ -1,7 +1,33 @@
+x-common: &common
+  restart: unless-stopped
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  networks: [internal]
+
+x-app: &app
+  <<: *common
+  build:
+    context: .
+  env_file: [.env]
+  environment:
+    API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL est obligatoire}
+    REDIS_URL: ${REDIS_URL:?REDIS_URL est obligatoire}
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+
 services:
   postgres:
+    <<: *common
     image: postgres:16-alpine
-    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-robot_short_yt}
       POSTGRES_USER: ${POSTGRES_USER:-robot}
@@ -9,63 +35,71 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-robot} -d ${POSTGRES_DB:-robot_short_yt}"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
       timeout: 5s
       retries: 10
-    networks: [internal]
+      start_period: 10s
 
   redis:
+    <<: *common
     image: redis:7-alpine
-    restart: unless-stopped
-    command: redis-server --appendonly yes
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD est obligatoire}"]
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD-SHELL", "redis-cli -a '$${REDIS_PASSWORD}' --no-auth-warning ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
       retries: 10
-    networks: [internal]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD est obligatoire}
 
   api:
-    build: .
-    restart: unless-stopped
-    env_file: [.env]
-    environment:
-      API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL est obligatoire}
-      REDIS_URL: redis://redis:6379/0
-    command: >
-      sh -c "alembic upgrade head &&
-      uvicorn api.main:app --host 0.0.0.0 --port 8000"
+    <<: *app
+    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+    ports:
+      - "127.0.0.1:8000:8000"
     depends_on:
-      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
-    networks: [internal]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
 
   worker:
-    build: .
-    restart: unless-stopped
+    <<: *app
+    command: ["python", "-m", "workers.main"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
+  robot-short-yt:
+    <<: *common
+    build:
+      context: .
     env_file: [.env]
     environment:
       API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL est obligatoire}
-      REDIS_URL: redis://redis:6379/0
-    command: python -m workers.main
-    depends_on:
-      postgres: {condition: service_healthy}
-      redis: {condition: service_healthy}
-    networks: [internal]
-
-  robot-short-yt:
-    build: .
-    restart: unless-stopped
-    env_file: [.env]
+      REDIS_URL: ${REDIS_URL:?REDIS_URL est obligatoire}
     volumes:
-      - ./credentials:/app/credentials
-      - ./storage:/app/storage
-      - ./logs:/app/logs
-      - ./db:/app/db
-    networks: [internal]
+      - ./credentials:/app/credentials:ro
+      - bot_storage:/app/storage
+      - bot_logs:/app/logs
+      - bot_db:/app/db
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    ports:
+      - "127.0.0.1:8420:8420"
 
 networks:
   internal:
@@ -74,3 +108,6 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  bot_storage:
+  bot_logs:
+  bot_db:
