@@ -784,3 +784,137 @@ class UsageEvent(Base):
     quantity: Mapped[int] = mapped_column(BigInteger)
     idempotency_key: Mapped[str] = mapped_column(String(128))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+# --- Partner referrals (commercial roles, never workspace authorization) ---
+
+class PartnerStatus(str, enum.Enum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    CLOSED = "closed"
+
+
+class PartnerCommissionStatus(str, enum.Enum):
+    PENDING = "pending"
+    AVAILABLE = "available"
+    PAID = "paid"
+    CANCELED = "canceled"
+
+
+class PartnerPayoutStatus(str, enum.Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    PAID = "paid"
+    FAILED = "failed"
+
+
+class PartnerProfile(Base):
+    __tablename__ = "partner_profiles"
+    __table_args__ = (
+        CheckConstraint("commission_bps > 0 AND commission_bps <= 10000", name="ck_partner_commission_bps"),
+        CheckConstraint("commission_months > 0", name="ck_partner_commission_months"),
+        CheckConstraint("payout_threshold_minor > 0", name="ck_partner_payout_threshold"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), unique=True, index=True
+    )
+    display_name: Mapped[str] = mapped_column(String(120))
+    status: Mapped[PartnerStatus] = mapped_column(
+        Enum(PartnerStatus, name="partner_status", values_callable=_enum_values),
+        default=PartnerStatus.PENDING,
+        index=True,
+    )
+    commission_bps: Mapped[int] = mapped_column(Integer, default=2000)
+    commission_months: Mapped[int] = mapped_column(Integer, default=12)
+    payout_threshold_minor: Mapped[int] = mapped_column(Integer, default=25_000)
+    payout_currency: Mapped[str] = mapped_column(String(3), default="XOF")
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class PromoCode(Base):
+    __tablename__ = "promo_codes"
+    __table_args__ = (
+        CheckConstraint("discount_bps > 0 AND discount_bps <= 10000", name="ck_promo_discount_bps"),
+        CheckConstraint("discount_cycles > 0", name="ck_promo_discount_cycles"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    partner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("partner_profiles.id", ondelete="RESTRICT"), index=True
+    )
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    discount_bps: Mapped[int] = mapped_column(Integer, default=1000)
+    discount_cycles: Mapped[int] = mapped_column(Integer, default=3)
+    eligible_plan_codes: Mapped[list] = mapped_column(JSON, default=lambda: ["CREATOR", "PRO"])
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    max_redemptions: Mapped[int | None] = mapped_column(Integer)
+    redemption_count: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ReferralAttribution(Base):
+    __tablename__ = "referral_attributions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    partner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("partner_profiles.id", ondelete="RESTRICT"), index=True)
+    promo_code_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("promo_codes.id", ondelete="RESTRICT"), index=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    attributed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    converted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class PartnerPayout(Base):
+    __tablename__ = "partner_payouts"
+    __table_args__ = (CheckConstraint("amount_minor > 0", name="ck_partner_payout_amount"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    partner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("partner_profiles.id", ondelete="RESTRICT"), index=True)
+    currency: Mapped[str] = mapped_column(String(3))
+    amount_minor: Mapped[int] = mapped_column(Integer)
+    status: Mapped[PartnerPayoutStatus] = mapped_column(
+        Enum(PartnerPayoutStatus, name="partner_payout_status", values_callable=_enum_values),
+        default=PartnerPayoutStatus.PENDING,
+        index=True,
+    )
+    external_reference: Mapped[str | None] = mapped_column(String(255), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PartnerCommission(Base):
+    __tablename__ = "partner_commissions"
+    __table_args__ = (
+        UniqueConstraint("payment_intent_id", name="uq_partner_commission_payment"),
+        CheckConstraint("amount_minor >= 0", name="ck_partner_commission_amount"),
+        CheckConstraint("net_revenue_minor >= 0", name="ck_partner_commission_net_revenue"),
+        CheckConstraint("commission_bps > 0 AND commission_bps <= 10000", name="ck_partner_commission_rate"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    partner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("partner_profiles.id", ondelete="RESTRICT"), index=True)
+    attribution_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("referral_attributions.id", ondelete="RESTRICT"), index=True)
+    payment_intent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("payment_intents.id", ondelete="RESTRICT"), index=True)
+    payout_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("partner_payouts.id", ondelete="SET NULL"), index=True)
+    currency: Mapped[str] = mapped_column(String(3))
+    net_revenue_minor: Mapped[int] = mapped_column(Integer)
+    commission_bps: Mapped[int] = mapped_column(Integer)
+    amount_minor: Mapped[int] = mapped_column(Integer)
+    status: Mapped[PartnerCommissionStatus] = mapped_column(
+        Enum(PartnerCommissionStatus, name="partner_commission_status", values_callable=_enum_values),
+        default=PartnerCommissionStatus.PENDING,
+        index=True,
+    )
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

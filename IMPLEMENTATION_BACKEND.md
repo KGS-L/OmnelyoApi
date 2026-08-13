@@ -228,6 +228,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [~] Implémenter le modèle retenu dans PostgreSQL (socle paiements, abonnements et mappings terminé ; règles commerciales restantes).
 - [x] Ajouter les quotas de connexions sociales, jobs simultanés, crédits, minutes source, stockage et publications.
 - [x] Implémenter les checkouts et webhooks Dodo/MoneyFusion derrière `BILLING_ENABLED`, avec tests PostgreSQL d'idempotence et de sécurité.
+- [~] Ajouter le programme partenaires (modèles, migration et calcul de remise terminés ; checkout, commissions post-paiement et espace partenaire restants).
 
 ### Phase 7 — Production
 
