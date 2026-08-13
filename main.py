@@ -1,5 +1,5 @@
 """
-Point d'entrée de Robot Short Yt.
+Point d'entrée de ShortPilot.
 Initialise la DB, lance le bot Telegram, démarre le watchdog planifié.
 """
 import logging

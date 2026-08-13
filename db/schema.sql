@@ -1,4 +1,4 @@
--- Robot Short Yt — schéma DB (SQLite)
+-- ShortPilot — schéma DB (SQLite)
 
 -- Une vidéo source soumise via le bot (lien YouTube envoyé)
 CREATE TABLE IF NOT EXISTS source_videos (

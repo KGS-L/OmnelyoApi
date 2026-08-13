@@ -11,7 +11,7 @@ class APISettings(BaseSettings):
 
     app_name: str = "ShortPilot Platform API"
     api_environment: str = "development"
-    api_database_url: str = "postgresql+psycopg://robot:robot@localhost:5432/robot_short_yt"
+    api_database_url: str = "postgresql+psycopg://shortpilot:shortpilot@localhost:5432/shortpilot"
     redis_url: str = "redis://localhost:6379/0"
     api_jwt_secret: str = "change-me-in-production"
     api_jwt_algorithm: str = "HS256"

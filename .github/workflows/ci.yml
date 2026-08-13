@@ -20,17 +20,17 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: robot_short_yt_test
-          POSTGRES_USER: robot
+          POSTGRES_DB: shortpilot_test
+          POSTGRES_USER: shortpilot
           POSTGRES_PASSWORD: test-password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U robot -d robot_short_yt_test"
+          --health-cmd "pg_isready -U shortpilot -d shortpilot_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       API_ENVIRONMENT: test
-      API_DATABASE_URL: postgresql+psycopg://robot:test-password@localhost:5432/robot_short_yt_test
+      API_DATABASE_URL: postgresql+psycopg://shortpilot:test-password@localhost:5432/shortpilot_test
       API_JWT_SECRET: ci-only-secret-with-at-least-32-characters
       POSTGRES_PASSWORD: compose-validation-only
     steps:
@@ -53,10 +53,10 @@ jobs:
       - name: Create non-secret Compose env file
         run: |
           printf '%s\n' \
-            'POSTGRES_DB=robot_short_yt_test' \
-            'POSTGRES_USER=robot' \
+            'POSTGRES_DB=shortpilot_test' \
+            'POSTGRES_USER=shortpilot' \
             'POSTGRES_PASSWORD=compose-validation-only' \
-            'API_DATABASE_URL=postgresql+psycopg://robot:compose-validation-only@postgres:5432/robot_short_yt_test' \
+            'API_DATABASE_URL=postgresql+psycopg://shortpilot:compose-validation-only@postgres:5432/shortpilot_test' \
             'API_ENVIRONMENT=test' \
             'API_JWT_SECRET=ci-only-secret-with-at-least-32-characters' \
             > .env

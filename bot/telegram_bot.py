@@ -1,5 +1,5 @@
 """
-Initialisation du bot Telegram Robot Short Yt (polling).
+Initialisation du bot Telegram ShortPilot (polling).
 """
 from telegram.ext import Application
 import config

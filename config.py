@@ -1,5 +1,5 @@
 """
-Config centrale du projet Robot Short Yt.
+Configuration centrale de ShortPilot.
 Charge les variables d'environnement (.env) et les expose comme constantes typées.
 """
 import os
@@ -33,7 +33,7 @@ OAUTH_CALLBACK_PORT = int(os.getenv("OAUTH_CALLBACK_PORT", 8420))
 R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID", "")
 R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "")
 R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "")
-R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "robot-short-yt")
+R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "shortpilot")
 R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL", "")
 
 # --- IA générative (fournisseurs compatibles avec le SDK OpenAI) ---
@@ -97,7 +97,7 @@ MANUAL_PAYMENT_INSTRUCTIONS = os.getenv(
 )
 
 # --- DB ---
-DATABASE_PATH = BASE_DIR / os.getenv("DATABASE_PATH", "db/robot_short_yt.sqlite3")
+DATABASE_PATH = BASE_DIR / os.getenv("DATABASE_PATH", "db/shortpilot.sqlite3")
 
 # --- Storage locale ---
 TMP_DIR = BASE_DIR / "storage" / "tmp"

@@ -10,7 +10,7 @@ services:
     command: >
       sh -c "alembic upgrade head &&
       uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload"
-  robot-short-yt:
+  shortpilot-bot:
     ports: ["8420:8420"]
     volumes:
       - .:/app

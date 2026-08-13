@@ -174,7 +174,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         shortpilot_connected = False
     
     status_text = (
-        "📊 <b>État du robot</b>\n\n"
+        "📊 <b>État du bot</b>\n\n"
         f"YouTube : {'✅ Connecté' if youtube_ok else '❌ Non connecté'}\n"
         f"Compte web : {'✅ Connecté' if shortpilot_connected else '❌ Non connecté'}\n"
         "Pipeline : PostgreSQL / workers SaaS\n"
