@@ -190,7 +190,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 ### Phase 2 — API métier
 
-- [~] Écrire les schémas Pydantic de `Channel`, `Video`, `Job` et `Publication` (`Channel` terminé).
+- [~] Écrire les schémas Pydantic de `Channel`, `Video`, `Job` et `Publication` (`Channel` et `Video` terminés).
 - [ ] Écrire repositories et services filtrés par workspace.
 - [ ] Ajouter CRUD, pagination, filtres et réponses d'erreur cohérentes.
 - [ ] Ajouter upload vidéo par flux, limites de taille et validation MIME réelle.

@@ -2,9 +2,9 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, field_validator, model_validator
 
-from api.models import ChannelPlatform, ChannelStatus, WorkspaceRole
+from api.models import ChannelPlatform, ChannelStatus, VideoStatus, WorkspaceRole
 
 
 class OTPRequest(BaseModel):
@@ -81,5 +81,47 @@ class ChannelResponse(BaseModel):
     handle: str | None
     avatar_url: str | None
     status: ChannelStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class VideoCreate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    source_url: HttpUrl | None = None
+    storage_key: str | None = Field(default=None, min_length=1, max_length=1024)
+
+    @field_validator("storage_key")
+    @classmethod
+    def validate_storage_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if normalized.startswith("/") or ".." in normalized.split("/"):
+            raise ValueError("La clé de stockage doit être relative et ne pas contenir '..'.")
+        return normalized
+
+    @model_validator(mode="after")
+    def require_video_source(self):
+        if self.source_url is None and self.storage_key is None:
+            raise ValueError("Une URL source ou une clé de stockage est obligatoire.")
+        return self
+
+
+class VideoUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+
+
+class VideoResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    title: str | None
+    source_url: str | None
+    storage_key: str | None
+    mime_type: str | None
+    duration_seconds: float | None
+    status: VideoStatus
+    error_message: str | None
     created_at: datetime
     updated_at: datetime
