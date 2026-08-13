@@ -28,7 +28,7 @@ class JobSchemaTests(unittest.TestCase):
 
 class JobTransitionTests(unittest.TestCase):
     def test_queued_job_can_be_cancelled(self):
-        job = SimpleNamespace(status=JobStatus.QUEUED, finished_at=None)
+        job = SimpleNamespace(status=JobStatus.QUEUED, finished_at=None, worker_id=None)
         cancel_job_record(job)
         self.assertEqual(job.status, JobStatus.CANCELLED)
         self.assertIsNotNone(job.finished_at)
@@ -46,7 +46,10 @@ class JobTransitionTests(unittest.TestCase):
             max_attempts=3,
             progress=75,
             error_message="Erreur temporaire",
+            available_at=None,
             started_at=object(),
+            heartbeat_at=object(),
+            worker_id="worker-1",
             finished_at=object(),
             result={"partial": True},
         )
@@ -55,6 +58,7 @@ class JobTransitionTests(unittest.TestCase):
         self.assertEqual(job.progress, 0)
         self.assertIsNone(job.error_message)
         self.assertIsNone(job.result)
+        self.assertIsNone(job.worker_id)
 
     def test_exhausted_job_cannot_be_retried(self):
         job = SimpleNamespace(status=JobStatus.FAILED, attempts=3, max_attempts=3)

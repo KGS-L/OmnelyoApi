@@ -48,6 +48,7 @@ def cancel_job_record(job: Job) -> None:
         )
     job.status = JobStatus.CANCELLED
     job.finished_at = datetime.now(timezone.utc)
+    job.worker_id = None
 
 
 def retry_job_record(job: Job) -> None:
@@ -63,8 +64,11 @@ def retry_job_record(job: Job) -> None:
         )
     job.status = JobStatus.QUEUED
     job.progress = 0
+    job.available_at = datetime.now(timezone.utc)
     job.error_message = None
     job.started_at = None
+    job.heartbeat_at = None
+    job.worker_id = None
     job.finished_at = None
     job.result = None
 

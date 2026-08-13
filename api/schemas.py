@@ -164,7 +164,10 @@ class JobResponse(BaseModel):
     result: dict | None
     error_message: str | None
     created_at: datetime
+    available_at: datetime
     started_at: datetime | None
+    heartbeat_at: datetime | None
+    worker_id: str | None
     finished_at: datetime | None
     updated_at: datetime
 

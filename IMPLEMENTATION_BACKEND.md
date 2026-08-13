@@ -209,7 +209,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [ ] Choisir la file Redis : Dramatiq, Celery ou RQ.
 - [ ] Sortir les traitements longs des processus API et Telegram.
 - [ ] Rendre chaque étape idempotente et rejouable.
-- [ ] Ajouter heartbeat, timeout, reprise, annulation et limite de concurrence par workspace.
+- [~] Ajouter heartbeat, timeout, reprise, annulation et limite de concurrence par workspace (leases et reprise PostgreSQL terminées ; limite par workspace restante).
 - [ ] Émettre la progression par polling initialement, puis SSE si nécessaire.
 
 ### Phase 5 — Connecteurs sociaux

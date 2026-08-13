@@ -1,6 +1,7 @@
 """Tests d'isolation nécessitant une base PostgreSQL migrée."""
 import unittest
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select
@@ -18,6 +19,7 @@ from api.models import (
     Channel,
     ChannelPlatform,
     Job,
+    JobStatus,
     JobType,
     Publication,
     User,
@@ -30,6 +32,13 @@ from api.routes.channels import _get_channel
 from api.routes.jobs import _ensure_video_in_workspace, _get_job
 from api.routes.publications import _ensure_targets_in_workspace, _get_publication
 from api.routes.videos import _get_video, delete_video
+from workers.job_state import (
+    claim_next_job,
+    complete_job,
+    fail_job,
+    heartbeat_job,
+    recover_stale_jobs,
+)
 
 
 class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
@@ -254,6 +263,48 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
         self.assertTrue(revoke_telegram_account(self.db, telegram_user_id))
         self.assertIsNone(get_active_telegram_connection(self.db, telegram_user_id))
         self.assertFalse(revoke_telegram_account(self.db, telegram_user_id))
+
+    def test_worker_claim_retry_and_completion(self):
+        job = Job(workspace_id=self.workspace_a.id, type=JobType.INGEST)
+        self.db.add(job)
+        self.db.commit()
+        job_id = job.id
+
+        claimed = claim_next_job(self.db, "worker-a")
+        self.assertEqual(claimed.id, job_id)
+        self.assertEqual(claimed.status, JobStatus.RUNNING)
+        self.assertEqual(claimed.attempts, 1)
+        self.assertTrue(heartbeat_job(self.db, job_id, "worker-a"))
+
+        status = fail_job(
+            self.db, job_id, "worker-a", "Erreur temporaire", retry_delay_seconds=0
+        )
+        self.assertEqual(status, JobStatus.QUEUED)
+        claimed = claim_next_job(self.db, "worker-b")
+        self.assertEqual(claimed.id, job_id)
+        self.assertEqual(claimed.attempts, 2)
+        self.assertTrue(complete_job(self.db, job_id, "worker-b", {"ok": True}))
+        self.db.refresh(job)
+        self.assertEqual(job.status, JobStatus.SUCCEEDED)
+        self.assertEqual(job.progress, 100)
+
+    def test_stale_worker_job_is_requeued(self):
+        stale_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+        job = Job(
+            workspace_id=self.workspace_a.id,
+            type=JobType.INGEST,
+            status=JobStatus.RUNNING,
+            attempts=1,
+            worker_id="dead-worker",
+            started_at=stale_time,
+            heartbeat_at=stale_time,
+        )
+        self.db.add(job)
+        self.db.commit()
+        self.assertEqual(recover_stale_jobs(self.db, stale_after_seconds=300), 1)
+        self.db.refresh(job)
+        self.assertEqual(job.status, JobStatus.QUEUED)
+        self.assertIsNone(job.worker_id)
 
 
 if __name__ == "__main__":
