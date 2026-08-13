@@ -11,6 +11,8 @@ from redis import Redis
 from api.config import APISettings, get_settings
 from api.database import get_db
 from api.dependencies import get_current_workspace_membership
+from api.integrations.media_validation import validate_publication_preflight
+from api.integrations.social import SocialPublisherError
 from api.models import (
     Channel,
     ChannelStatus,
@@ -199,7 +201,7 @@ def _validate_enqueue_target(
     if video is None or not video.rendered_storage_key:
         raise HTTPException(status_code=409, detail="La vidéo doit d'abord être rendue.")
     destination = db.execute(
-        select(Channel.id, SocialConnection.id)
+        select(Channel.id, SocialConnection.id, Channel.platform)
         .join(SocialConnection, SocialConnection.id == Channel.connection_id)
         .where(
             Channel.id == publication.channel_id,
@@ -212,6 +214,18 @@ def _validate_enqueue_target(
     ).one_or_none()
     if destination is None:
         raise HTTPException(status_code=409, detail="La destination sociale n'est pas connectée.")
+    try:
+        validate_publication_preflight(
+            platform=destination[2],
+            storage_key=video.rendered_storage_key,
+            duration_seconds=video.duration_seconds,
+            title=publication.title,
+            description=publication.description,
+            visibility=publication.visibility,
+            scheduled_at=publication.scheduled_at,
+        )
+    except SocialPublisherError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def enqueue_batch_publication_records(

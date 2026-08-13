@@ -26,6 +26,7 @@ from api.models import (
     JobStatus,
     JobType,
     Publication,
+    PublicationVisibility,
     User,
     Workspace,
     WorkspaceMembership,
@@ -169,6 +170,7 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
             workspace_id=self.workspace_a.id,
             title="Clip rendu",
             rendered_storage_key="workspaces/a/rendered/clip.mp4",
+            duration_seconds=60,
         )
         self.db.add(video)
         self.db.flush()
@@ -212,6 +214,7 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
             workspace_id=self.workspace_a.id,
             title="Vidéo multi-destination",
             rendered_storage_key="workspaces/a/rendered/batch.mp4",
+            duration_seconds=60,
         )
         self.db.add(video)
         self.db.flush()
@@ -229,6 +232,7 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
                     PublicationDestinationCreate(
                         channel_id=channels[1].id,
                         title="Titre programmé",
+                        visibility=PublicationVisibility.PUBLIC,
                         scheduled_at=scheduled_at,
                     ),
                 ],
@@ -301,6 +305,31 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
             ),
             0,
         )
+        video.duration_seconds = 181
+        self.db.commit()
+        with self.assertRaises(HTTPException) as invalid_media:
+            enqueue_batch_publication_records(
+                self.db,
+                self.workspace_a.id,
+                [publications[0].id, publications[1].id],
+            )
+        self.assertEqual(invalid_media.exception.status_code, 422)
+        self.assertEqual(
+            len(
+                list(
+                    self.db.scalars(
+                        select(Job).where(
+                            Job.workspace_id == self.workspace_a.id,
+                            Job.video_id == video.id,
+                            Job.type == JobType.PUBLISH,
+                        )
+                    )
+                )
+            ),
+            0,
+        )
+        video.duration_seconds = 60
+        self.db.commit()
         jobs = enqueue_batch_publication_records(
             self.db,
             self.workspace_a.id,

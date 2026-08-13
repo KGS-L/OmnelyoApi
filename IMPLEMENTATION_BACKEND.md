@@ -166,7 +166,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] L'utilisateur sélectionne YouTube, TikTok, Instagram et/ou Facebook.
 - [x] L'API vérifie que chaque destination est connectée et autorisée.
 - [x] L'utilisateur peut personnaliser légende, visibilité et horaire par plateforme.
-- [ ] L'API valide le média et les options selon chaque destination avant facturation ou mise en file.
+- [~] L'API valide le média et les options selon chaque destination avant facturation ou mise en file (YouTube terminé ; autres plateformes à ajouter avec leurs adaptateurs).
 - [~] Un job parent orchestre les rendus ; les jobs de publication séparés par destination sont terminés, orchestration parente restante.
 - [x] Un échec sur une plateforme ne bloque pas les autres.
 
