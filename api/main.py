@@ -6,6 +6,7 @@ from api.config import get_settings
 from api.integrations.social import social_publishers
 from api.integrations.youtube import YouTubePublisher
 from api.integrations.tiktok import TikTokPublisher
+from api.integrations.facebook import FacebookPublisher
 from api.models import ChannelPlatform
 from api.routes import (
     auth,
@@ -25,6 +26,10 @@ if not social_publishers.has(ChannelPlatform.YOUTUBE):
 if not social_publishers.has(ChannelPlatform.TIKTOK):
     social_publishers.register(TikTokPublisher(
         settings.tiktok_client_key, settings.tiktok_client_secret, settings.tiktok_sandbox_mode
+    ))
+if not social_publishers.has(ChannelPlatform.FACEBOOK):
+    social_publishers.register(FacebookPublisher(
+        settings.meta_app_id, settings.meta_app_secret, settings.meta_graph_api_version
     ))
 app = FastAPI(title=settings.app_name, version="0.1.0")
 app.add_middleware(

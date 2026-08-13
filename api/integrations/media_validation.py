@@ -33,6 +33,16 @@ def validate_publication_preflight(
         if len(description or title) > 2200:
             raise SocialPublisherError(SocialErrorCode.VALIDATION, "La légende TikTok ne peut pas dépasser 2 200 caractères.")
         return
+    if platform is ChannelPlatform.FACEBOOK:
+        if PurePosixPath(storage_key).suffix.lower() not in {".mp4", ".mov"}:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "Facebook attend un rendu MP4 ou MOV.")
+        if duration_seconds is None or not 3 <= duration_seconds <= 60:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "Un Reel Facebook doit durer entre 3 et 60 secondes.")
+        if scheduled_at is not None:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "La programmation Facebook Reels n'est pas encore activée.")
+        if visibility is not PublicationVisibility.PUBLIC:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "Un Reel Facebook doit viser la visibilité publique.")
+        return
     if platform is not ChannelPlatform.YOUTUBE:
         raise SocialPublisherError(
             SocialErrorCode.AUTHORIZATION,

@@ -31,6 +31,9 @@ class APISettings(BaseSettings):
     tiktok_client_secret: str = ""
     tiktok_sandbox_mode: bool = True
     r2_signed_url_ttl_seconds: int = 900
+    meta_app_id: str = ""
+    meta_app_secret: str = ""
+    meta_graph_api_version: str = "v23.0"
     worker_poll_interval_seconds: float = 2.0
     worker_stale_after_seconds: int = 300
     worker_heartbeat_interval_seconds: int = 30

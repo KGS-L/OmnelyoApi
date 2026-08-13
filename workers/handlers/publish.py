@@ -17,6 +17,7 @@ from api.integrations.social import (
 )
 from api.integrations.youtube import YouTubePublisher
 from api.integrations.tiktok import TikTokPublisher
+from api.integrations.facebook import FacebookPublisher
 from api.models import (
     Channel,
     ChannelPlatform,
@@ -65,6 +66,12 @@ def publish_video(job: Job, heartbeat) -> dict:
             settings.tiktok_client_key,
             settings.tiktok_client_secret,
             settings.tiktok_sandbox_mode,
+        ))
+    if not social_publishers.has(ChannelPlatform.FACEBOOK):
+        social_publishers.register(FacebookPublisher(
+            settings.meta_app_id,
+            settings.meta_app_secret,
+            settings.meta_graph_api_version,
         ))
     publisher = social_publishers.get(context.platform)
     work_dir = (
@@ -213,7 +220,9 @@ def _persist_result(context: PublishContext, result: PublishResult) -> dict:
         publication.external_id = result.external_id
         publication.provider_response = result.raw_response
         publication.error_message = None
-        if context.scheduled_at is not None:
+        if result.status.lower() in {"processing", "pending", "in_progress"}:
+            publication.status = PublicationStatus.PUBLISHING
+        elif context.scheduled_at is not None or result.status.lower() == "scheduled":
             publication.status = PublicationStatus.SCHEDULED
         else:
             publication.status = PublicationStatus.PUBLISHED

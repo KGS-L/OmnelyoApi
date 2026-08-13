@@ -57,6 +57,18 @@ class MediaValidationTests(unittest.TestCase):
             )
         self.assertEqual(raised.exception.code, SocialErrorCode.AUTHORIZATION)
 
+    def test_facebook_reel_duration_is_bounded(self):
+        with self.assertRaisesRegex(SocialPublisherError, "3 et 60"):
+            validate_publication_preflight(
+                platform=ChannelPlatform.FACEBOOK,
+                storage_key="rendered/reel.mp4",
+                duration_seconds=61,
+                title="Reel",
+                description=None,
+                visibility=PublicationVisibility.PUBLIC,
+                scheduled_at=None,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
