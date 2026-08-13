@@ -24,6 +24,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from api.database import Base
 
 
+def _enum_values(enum_class):
+    return [member.value for member in enum_class]
+
+
 class IdentityProvider(str, enum.Enum):
     EMAIL = "email"
     GOOGLE = "google"
@@ -96,6 +100,17 @@ class PublicationVisibility(str, enum.Enum):
     PRIVATE = "private"
     UNLISTED = "unlisted"
     PUBLIC = "public"
+
+
+class MediaAssetType(str, enum.Enum):
+    IMAGE = "image"
+
+
+class PublicationFormat(str, enum.Enum):
+    SHORT_VIDEO = "short_video"
+    STANDARD_VIDEO = "standard_video"
+    PHOTO = "photo"
+    CAROUSEL = "carousel"
 
 
 class TelegramConnectionStatus(str, enum.Enum):
@@ -395,8 +410,13 @@ class Publication(Base):
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
     )
-    video_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("videos.id", ondelete="CASCADE"), index=True
+    video_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("videos.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    format: Mapped[PublicationFormat] = mapped_column(
+        Enum(PublicationFormat, name="publication_format", values_callable=_enum_values),
+        default=PublicationFormat.SHORT_VIDEO,
+        index=True,
     )
     channel_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("channels.id", ondelete="CASCADE"), index=True
@@ -425,9 +445,45 @@ class Publication(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     workspace: Mapped[Workspace] = relationship(back_populates="publications")
-    video: Mapped[Video] = relationship(back_populates="publications")
+    video: Mapped[Video | None] = relationship(back_populates="publications")
     channel: Mapped[Channel] = relationship(back_populates="publications")
     job: Mapped[Job | None] = relationship(back_populates="publications")
+
+
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[MediaAssetType] = mapped_column(
+        Enum(MediaAssetType, name="media_asset_type", values_callable=_enum_values), index=True
+    )
+    storage_key: Mapped[str] = mapped_column(String(1024), unique=True)
+    mime_type: Mapped[str] = mapped_column(String(127))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
+    retention_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PublicationMediaAsset(Base):
+    __tablename__ = "publication_media_assets"
+    __table_args__ = (
+        UniqueConstraint("publication_id", "position", name="uq_publication_media_position"),
+        UniqueConstraint("publication_id", "asset_id", name="uq_publication_media_asset"),
+        CheckConstraint("position >= 0", name="ck_publication_media_position"),
+    )
+
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("publications.id", ondelete="CASCADE"), primary_key=True
+    )
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("media_assets.id", ondelete="RESTRICT"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
 
 
 # --- Billing (provider-neutral, PostgreSQL source of truth) ---
@@ -435,10 +491,6 @@ class Publication(Base):
 class Provider(str, enum.Enum):
     DODO = "dodo"
     MONEYFUSION = "moneyfusion"
-
-
-def _enum_values(enum_class):
-    return [member.value for member in enum_class]
 
 
 class ProductType(str, enum.Enum):

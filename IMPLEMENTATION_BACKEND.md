@@ -151,6 +151,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] Ne jamais exposer les tokens dans les réponses API ou les logs.
 - [x] Ajouter une contrainte garantissant que vidéo, chaîne, job et publication appartiennent au même workspace.
 - [x] Conserver une publication par destination, même lors d'une sélection multiple.
+- [~] Généraliser les publications aux vidéos standard, photos et carrousels (`MediaAsset`, ordre des médias et `PublicationFormat` ajoutés ; routes d'upload et adaptateurs restant à brancher).
 
 ### Contrat commun des adaptateurs
 
