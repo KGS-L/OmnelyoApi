@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from api.auth.accounts import get_or_create_user
 from api.auth.google import verify_google_credential
-from api.auth.otp import EmailSender, OTPService
+from api.auth.otp import EmailDeliveryError, EmailSender, OTPService
 from api.auth.tokens import TokenService
 from api.config import APISettings, get_settings
 from api.database import get_db
@@ -27,9 +27,11 @@ def request_otp(payload: OTPRequest, settings: Annotated[APISettings, Depends(ge
     redis = Redis.from_url(settings.redis_url)
     try:
         code = OTPService(redis, settings).issue(str(payload.email))
-        EmailSender().send_otp(str(payload.email), code)
+        EmailSender(settings).send_otp(str(payload.email), code)
     except ValueError as exc:
         raise HTTPException(status_code=429, detail=str(exc))
+    except EmailDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     response = {"message": "Si l'adresse est valide, un code a été envoyé."}
     if settings.api_environment != "production" and settings.expose_dev_otp:
         response["dev_code"] = code

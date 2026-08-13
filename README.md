@@ -13,7 +13,7 @@ programmation et de publication de vidéos courtes. Le dépôt réunit actuellem
 - une base multi-tenant PostgreSQL et une abstraction de facturation extensible.
 
 > Le frontend SaaS n'est pas inclus dans ce dépôt. Le backend métier et ses
-> connecteurs sont en place. La tarification, les quotas, l'envoi d'emails et le
+> connecteurs sont en place. La tarification, les quotas et le
 > prestataire de paiement doivent encore être décidés ou raccordés.
 
 ## Fonctionnalités
@@ -199,6 +199,7 @@ La liste exhaustive et les valeurs d'exemple se trouvent dans
 | Backend SaaS | `API_DATABASE_URL`, `REDIS_URL`, `API_JWT_SECRET`, `FRONTEND_ORIGINS` |
 | Protection API | `API_RATE_LIMIT_ENABLED`, `API_RATE_LIMIT_PER_MINUTE` |
 | Auth Google | `GOOGLE_WEB_CLIENT_ID` |
+| Emails | `EMAIL_PROVIDER`, `EMAIL_FROM`, `EMAIL_REPLY_TO`, `RESEND_API_KEY` |
 | Domaines | `BOT_DOMAIN`, `API_DOMAIN` |
 
 En production, utilise un secret `API_JWT_SECRET` aléatoire d'au moins 32
@@ -286,9 +287,9 @@ Les réponses incluent `X-Request-ID`. Le rate limiting s'appuie sur Redis et
 fonctionne en mode fail-open si Redis est momentanément indisponible. Les jobs
 exposent une progression de 0 à 100 et peuvent être suivis par polling.
 
-L'émetteur d'emails est encore une interface : avant la production, il faut le
-relier à un service transactionnel (par exemple Brevo, Resend ou SMTP). En
-développement uniquement, `EXPOSE_DEV_OTP=true` renvoie le code dans la réponse.
+Les OTP peuvent être envoyés avec Resend (`EMAIL_PROVIDER=resend`). En local,
+`EMAIL_PROVIDER=log` n'effectue aucun appel externe et
+`EXPOSE_DEV_OTP=true` permet de renvoyer le code dans la réponse.
 
 Plus de détails dans [BACKEND_SAAS.md](BACKEND_SAAS.md).
 
@@ -394,7 +395,7 @@ documentés dans [CI_CD.md](CI_CD.md).
 - [x] upload streaming, progression, rate limiting et audit ;
 - [x] abstraction technique de facturation ;
 - [x] Docker Compose, CI et déploiement VPS ;
-- [ ] fournisseur d'emails transactionnels ;
+- [x] fournisseur d'emails transactionnels Resend ;
 - [ ] atelier business model, quotas et règles de crédits ;
 - [x] plans techniques, quotas sociaux/jobs/volume et ledger de crédits PostgreSQL ;
 - [x] endpoints de paiement Dodo/MoneyFusion et webhooks idempotents ;

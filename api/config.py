@@ -48,6 +48,12 @@ class APISettings(BaseSettings):
     frontend_origins: str = "http://localhost:3000"
     expose_dev_otp: bool = False
 
+    # --- Emails transactionnels ---
+    email_provider: str = "log"
+    email_from: str = "ShortPilot <onboarding@resend.dev>"
+    email_reply_to: str = ""
+    resend_api_key: str = ""
+
     # --- Facturation / Dodo Payments / MoneyFusion ---
     billing_enabled: bool = False
     billing_default_provider: str = "dodo"
@@ -98,6 +104,14 @@ class APISettings(BaseSettings):
             raise ValueError("BILLING_DEFAULT_PROVIDER doit être 'dodo' ou 'moneyfusion'.")
         return value
 
+    @field_validator("email_provider")
+    @classmethod
+    def validate_email_provider(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value not in {"log", "resend"}:
+            raise ValueError("EMAIL_PROVIDER doit être 'log' ou 'resend'.")
+        return value
+
     @model_validator(mode="after")
     def validate_billing_credentials(self):
         # En production, seul le fournisseur sélectionné est obligatoire.
@@ -115,6 +129,22 @@ class APISettings(BaseSettings):
             if missing:
                 raise ValueError(
                     f"Facturation activée en production mais variables manquantes: {', '.join(missing)}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_email_credentials(self):
+        if self.api_environment == "production":
+            if self.email_provider != "resend":
+                raise ValueError("EMAIL_PROVIDER=resend est obligatoire en production.")
+            missing = []
+            if not self.resend_api_key.strip():
+                missing.append("RESEND_API_KEY")
+            if not self.email_from.strip():
+                missing.append("EMAIL_FROM")
+            if missing:
+                raise ValueError(
+                    f"Envoi d'emails activé mais variables manquantes: {', '.join(missing)}"
                 )
         return self
 
