@@ -44,6 +44,9 @@ class ContentModelsTests(unittest.TestCase):
         self.assertIn("sequence_order", table.c)
         self.assertIn("uq_videos_parent_sequence", names)
         self.assertIn("ck_videos_kind_parent", names)
+        self.assertIn("rendered_storage_key", table.c)
+        self.assertIn("narration_text", table.c)
+        self.assertIn("rendered_at", table.c)
 
 
 if __name__ == "__main__":

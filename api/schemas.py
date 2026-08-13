@@ -133,8 +133,11 @@ class VideoResponse(BaseModel):
     title: str | None
     source_url: str | None
     storage_key: str | None
+    rendered_storage_key: str | None
     mime_type: str | None
     duration_seconds: float | None
+    narration_text: str | None
+    rendered_at: datetime | None
     status: VideoStatus
     error_message: str | None
     created_at: datetime

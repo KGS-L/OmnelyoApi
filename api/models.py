@@ -231,8 +231,11 @@ class Video(Base):
     title: Mapped[str | None] = mapped_column(String(255))
     source_url: Mapped[str | None] = mapped_column(String(2048))
     storage_key: Mapped[str | None] = mapped_column(String(1024))
+    rendered_storage_key: Mapped[str | None] = mapped_column(String(1024))
     mime_type: Mapped[str | None] = mapped_column(String(127))
     duration_seconds: Mapped[float | None] = mapped_column(Float)
+    narration_text: Mapped[str | None] = mapped_column(Text)
+    rendered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[VideoStatus] = mapped_column(
         Enum(VideoStatus, name="video_status"), default=VideoStatus.UPLOADED, index=True
     )
