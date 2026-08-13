@@ -136,7 +136,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 | Plateforme | Publication API | Contraintes principales | Priorité proposée |
 |---|---|---|---|
-| YouTube | Déjà intégrée | Migrer les tokens fichier vers PostgreSQL chiffré | 1 |
+| YouTube | Adaptateur SaaS ajouté | Configurer l'application OAuth et faire valider l'écran de consentement | 1 |
 | TikTok | Content Posting API | App et scope approuvés ; audit requis pour publier publiquement à grande échelle | 2 |
 | Instagram | Instagram API | Compte professionnel et permission de publication ; média accessible par URL ou upload repris | 3 |
 | Facebook | Graph API Reels Publishing | Publication vers une Page avec les permissions et tokens Meta adaptés | 3 |
@@ -214,7 +214,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 ### Phase 5 — Connecteurs sociaux
 
-- [ ] Migrer YouTube vers le système générique de connexions.
+- [x] Migrer YouTube vers le système générique de connexions.
 - [ ] Livrer TikTok en environnement sandbox/non audité et préparer l'audit.
 - [ ] Livrer Instagram pour comptes professionnels.
 - [ ] Livrer Facebook pour Pages.

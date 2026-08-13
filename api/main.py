@@ -3,6 +3,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import get_settings
+from api.integrations.social import social_publishers
+from api.integrations.youtube import YouTubePublisher
+from api.models import ChannelPlatform
 from api.routes import (
     auth,
     channels,
@@ -16,6 +19,8 @@ from api.routes import (
 )
 
 settings = get_settings()
+if not social_publishers.has(ChannelPlatform.YOUTUBE):
+    social_publishers.register(YouTubePublisher(settings.youtube_client_secrets_file))
 app = FastAPI(title=settings.app_name, version="0.1.0")
 app.add_middleware(
     CORSMiddleware,

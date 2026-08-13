@@ -1,5 +1,6 @@
 """Configuration stricte et isolée du backend SaaS."""
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,6 +26,7 @@ class APISettings(BaseSettings):
     social_credentials_key: str = ""
     social_oauth_callback_base_url: str = ""
     social_oauth_state_ttl_seconds: int = 600
+    youtube_client_secrets_file: Path = Path("credentials/client_secret.json")
     worker_poll_interval_seconds: float = 2.0
     worker_stale_after_seconds: int = 300
     worker_heartbeat_interval_seconds: int = 30

@@ -53,6 +53,14 @@ class OAuthGrant:
 
 
 @dataclass(frozen=True)
+class PublisherCredentials:
+    access_token: str
+    refresh_token: str | None
+    scopes: list[str]
+    expires_at: datetime | None
+
+
+@dataclass(frozen=True)
 class PublishRequest:
     media_path: Path
     title: str
@@ -83,7 +91,7 @@ class SocialPublisher(ABC):
         """Échange le code temporaire et retourne des données normalisées."""
 
     @abstractmethod
-    def list_channels(self) -> list[SocialChannel]:
+    def list_channels(self, credentials: PublisherCredentials) -> list[SocialChannel]:
         """Liste les comptes, chaînes ou Pages accessibles."""
 
     @abstractmethod
@@ -91,19 +99,26 @@ class SocialPublisher(ABC):
         """Lève SocialPublisherError si le média ou les options sont invalides."""
 
     @abstractmethod
-    def publish(self, channel_external_id: str, request: PublishRequest) -> PublishResult:
+    def publish(
+        self,
+        credentials: PublisherCredentials,
+        channel_external_id: str,
+        request: PublishRequest,
+    ) -> PublishResult:
         """Publie ou programme un média sur une destination."""
 
     @abstractmethod
-    def get_status(self, external_id: str) -> str:
+    def get_status(self, credentials: PublisherCredentials, external_id: str) -> str:
         """Retourne le statut fournisseur courant."""
 
     @abstractmethod
-    def cancel(self, external_id: str) -> None:
+    def cancel(self, credentials: PublisherCredentials, external_id: str) -> None:
         """Annule une publication lorsque le fournisseur le permet."""
 
     @abstractmethod
-    def refresh_credentials(self) -> dict[str, Any]:
+    def refresh_credentials(
+        self, credentials: PublisherCredentials
+    ) -> PublisherCredentials:
         """Rafraîchit les credentials sans les journaliser."""
 
 
@@ -124,6 +139,9 @@ class SocialPublisherRegistry:
                 SocialErrorCode.AUTHORIZATION,
                 f"La plateforme {platform.value} n'est pas encore connectée.",
             ) from exc
+
+    def has(self, platform: ChannelPlatform) -> bool:
+        return platform in self._publishers
 
 
 social_publishers = SocialPublisherRegistry()

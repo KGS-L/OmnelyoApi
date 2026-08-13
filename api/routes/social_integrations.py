@@ -72,7 +72,10 @@ def start_social_oauth(
         Redis.from_url(settings.redis_url), settings.social_oauth_state_ttl_seconds
     )
     state = state_service.issue(user.id, workspace_id, platform)
-    url = publisher.connect(state, callback_uri)
+    try:
+        url = publisher.connect(state, callback_uri)
+    except SocialPublisherError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return SocialOAuthStartResponse(
         authorization_url=url,
         expires_in=settings.social_oauth_state_ttl_seconds,
