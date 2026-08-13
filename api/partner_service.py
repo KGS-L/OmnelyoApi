@@ -105,6 +105,15 @@ class PartnerService:
         db.flush()
         return attribution
 
+    def reject_self_referral(
+        self, db: Session, partner_id: uuid.UUID, actor_user_id: uuid.UUID
+    ) -> None:
+        partner_user_id = db.scalar(select(PartnerProfile.user_id).where(
+            PartnerProfile.id == partner_id
+        ))
+        if partner_user_id == actor_user_id:
+            raise PromoCodeError("Un partenaire ne peut pas utiliser son propre code.")
+
 
 def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)

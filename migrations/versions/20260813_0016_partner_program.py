@@ -76,6 +76,18 @@ def upgrade() -> None:
     for column in ("partner_id", "promo_code_id", "workspace_id", "expires_at", "converted_at"):
         op.create_index(f"ix_referral_attributions_{column}", "referral_attributions", [column])
 
+    op.add_column("payment_intents", sa.Column("original_amount_minor", sa.Integer(), nullable=True))
+    op.add_column("payment_intents", sa.Column("discount_amount_minor", sa.Integer(), server_default="0", nullable=False))
+    op.add_column("payment_intents", sa.Column("promo_code_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("promo_codes.id", ondelete="RESTRICT")))
+    op.add_column("payment_intents", sa.Column("referral_attribution_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("referral_attributions.id", ondelete="RESTRICT")))
+    op.add_column("payment_intents", sa.Column("promo_code_snapshot", sa.String(32)))
+    op.add_column("payment_intents", sa.Column("discount_bps_snapshot", sa.Integer()))
+    op.add_column("payment_intents", sa.Column("discount_cycles_snapshot", sa.Integer()))
+    op.execute("UPDATE payment_intents SET original_amount_minor = expected_amount_minor WHERE original_amount_minor IS NULL")
+    op.alter_column("payment_intents", "original_amount_minor", nullable=False)
+    op.create_index("ix_payment_intents_promo_code_id", "payment_intents", ["promo_code_id"])
+    op.create_index("ix_payment_intents_referral_attribution_id", "payment_intents", ["referral_attribution_id"])
+
     op.create_table(
         "partner_payouts",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -120,6 +132,11 @@ def downgrade() -> None:
     op.execute("UPDATE billing_plans SET publications_monthly_limit = 120 WHERE code = 'CREATOR'")
     op.execute("UPDATE billing_plans SET publications_monthly_limit = 800 WHERE code = 'PRO'")
     for table in ("partner_commissions", "partner_payouts", "referral_attributions", "promo_codes", "partner_profiles"):
+        if table == "referral_attributions":
+            for column in ("referral_attribution_id", "promo_code_id"):
+                op.drop_index(f"ix_payment_intents_{column}", table_name="payment_intents")
+            for column in ("discount_cycles_snapshot", "discount_bps_snapshot", "promo_code_snapshot", "referral_attribution_id", "promo_code_id", "discount_amount_minor", "original_amount_minor"):
+                op.drop_column("payment_intents", column)
         op.drop_table(table)
     postgresql.ENUM(name="partner_payout_status").drop(op.get_bind(), checkfirst=True)
     postgresql.ENUM(name="partner_commission_status").drop(op.get_bind(), checkfirst=True)

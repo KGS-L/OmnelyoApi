@@ -36,11 +36,16 @@ class DodoPaymentProvider(PaymentProvider):
 
     def create_checkout(self, request: CheckoutRequest) -> CheckoutResult:
         # Server-side product mapping only; never trust frontend for product/price/amount
+        kwargs = {
+            "product_cart": [{"product_id": request.external_product_id, "quantity": request.quantity}],
+            "customer": {"email": request.customer_email} if request.customer_email else None,
+            "return_url": self._return_url or None,
+            "metadata": request.metadata or None,
+        }
+        if request.discount_codes:
+            kwargs["discount_codes"] = request.discount_codes
         session = self._client.checkout_sessions.create(
-            product_cart=[{"product_id": request.external_product_id, "quantity": request.quantity}],
-            customer={"email": request.customer_email} if request.customer_email else None,
-            return_url=self._return_url or None,
-            metadata=request.metadata or None,
+            **kwargs,
         )
         # SDK responses are Pydantic models per docs; use properties without logging sensitive data
         session_id = getattr(session, "session_id", None) or getattr(session, "id", None) or ""

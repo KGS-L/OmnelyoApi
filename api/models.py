@@ -547,10 +547,21 @@ class PaymentIntent(Base):
     purchase_code: Mapped[str] = mapped_column(String(64), index=True)  # e.g., CREATOR_MONTHLY | PRO_MONTHLY | TOPUP
     product_type: Mapped[ProductType] = mapped_column(Enum(ProductType, name="billing_product_type", values_callable=_enum_values))
     expected_amount_minor: Mapped[int] = mapped_column(Integer)
+    original_amount_minor: Mapped[int] = mapped_column(Integer)
+    discount_amount_minor: Mapped[int] = mapped_column(Integer, default=0)
     expected_currency: Mapped[str] = mapped_column(String(3))
     external_product_id: Mapped[str | None] = mapped_column(String(255))
     external_price_id: Mapped[str | None] = mapped_column(String(255))
     customer_email: Mapped[str | None] = mapped_column(String(320))
+    promo_code_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("promo_codes.id", ondelete="RESTRICT"), index=True
+    )
+    referral_attribution_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("referral_attributions.id", ondelete="RESTRICT"), index=True
+    )
+    promo_code_snapshot: Mapped[str | None] = mapped_column(String(32))
+    discount_bps_snapshot: Mapped[int | None] = mapped_column(Integer)
+    discount_cycles_snapshot: Mapped[int | None] = mapped_column(Integer)
     # Canonical provider identifiers kept distinct
     checkout_session_id: Mapped[str | None] = mapped_column(String(255))
     payment_id: Mapped[str | None] = mapped_column(String(255))

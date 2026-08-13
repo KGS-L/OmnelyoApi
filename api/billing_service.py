@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Mapping
 
 from sqlalchemy import select
@@ -17,15 +17,21 @@ from api.billing_providers.base import (
 )
 from api.models import (
     BillingInterval,
+    PartnerCommission,
+    PartnerCommissionStatus,
+    PartnerProfile,
     PaymentIntent,
     PaymentIntentStatus,
     Provider,
     ProviderEvent,
     ProviderEventStatus,
     ProviderPriceMapping,
+    PromoCode,
+    ReferralAttribution,
     Subscription,
     SubscriptionStatus,
 )
+from api.partner_service import PartnerService
 
 
 class SignatureError(Exception):
@@ -105,10 +111,26 @@ class BillingPGService:
         idempotency_key: str,
         customer_name: str | None = None,
         customer_phone: str | None = None,
+        promo_code: str | None = None,
+        actor_user_id: uuid.UUID | None = None,
     ) -> PaymentIntent:
         mapping = self._find_mapping(db, purchase_code)
         if self.provider_enum == Provider.MONEYFUSION and mapping.product_type.value == "subscription":
             raise ValueError("MoneyFusion est limité aux achats ponctuels; utilise Dodo pour un abonnement.")
+        promo_quote = None
+        attribution = None
+        if promo_code:
+            plan_code = self._mapping_key(purchase_code)[0]
+            if mapping.product_type.value != "subscription":
+                raise ValueError("Les codes partenaires sont réservés aux abonnements Creator et Pro.")
+            partner_service = PartnerService()
+            promo_quote = partner_service.quote(
+                db, promo_code, plan_code, mapping.expected_amount_minor
+            )
+            if actor_user_id is None:
+                raise ValueError("L'utilisateur du checkout est requis avec un code partenaire.")
+            partner_service.reject_self_referral(db, promo_quote.partner_id, actor_user_id)
+            attribution = partner_service.attribute(db, workspace_id, promo_quote)
         existing = db.scalar(
             select(PaymentIntent).where(
                 PaymentIntent.workspace_id == workspace_id,
@@ -117,18 +139,30 @@ class BillingPGService:
             )
         )
         if existing is not None:
+            requested_code = promo_quote.code if promo_quote else None
+            if existing.purchase_code != purchase_code.strip().upper() or existing.promo_code_snapshot != requested_code:
+                raise ValueError("Cette clé d'idempotence a déjà été utilisée avec un autre achat.")
             return existing
+
+        final_amount = promo_quote.final_amount_minor if promo_quote else mapping.expected_amount_minor
 
         intent = PaymentIntent(
             workspace_id=workspace_id,
             provider=self.provider_enum,
             purchase_code=purchase_code.strip().upper(),
             product_type=mapping.product_type,
-            expected_amount_minor=mapping.expected_amount_minor,
+            expected_amount_minor=final_amount,
+            original_amount_minor=mapping.expected_amount_minor,
+            discount_amount_minor=promo_quote.discount_amount_minor if promo_quote else 0,
             expected_currency=mapping.expected_currency.upper(),
             external_product_id=mapping.external_product_id,
             external_price_id=mapping.external_price_id,
             customer_email=customer_email.strip().lower() if customer_email else None,
+            promo_code_id=promo_quote.promo_code_id if promo_quote else None,
+            referral_attribution_id=attribution.id if attribution else None,
+            promo_code_snapshot=promo_quote.code if promo_quote else None,
+            discount_bps_snapshot=promo_quote.discount_bps if promo_quote else None,
+            discount_cycles_snapshot=promo_quote.discount_cycles if promo_quote else None,
             idempotency_key=idempotency_key,
             status=PaymentIntentStatus.PENDING,
         )
@@ -144,9 +178,13 @@ class BillingPGService:
                     customer_phone=customer_phone,
                     idempotency_key=idempotency_key,
                     external_product_id=mapping.external_product_id,
-                    expected_amount_minor=mapping.expected_amount_minor,
+                    expected_amount_minor=final_amount,
                     expected_currency=mapping.expected_currency.upper(),
-                    metadata={"payment_intent_id": str(intent.id)},
+                    discount_codes=[promo_quote.code] if promo_quote and self.provider_enum == Provider.DODO else [],
+                    metadata={
+                        "payment_intent_id": str(intent.id),
+                        **({"promo_code": promo_quote.code} if promo_quote else {}),
+                    },
                 )
             )
             intent.checkout_session_id = result.checkout_session_id
@@ -213,6 +251,42 @@ class BillingPGService:
         event.error_message = message[:255]
         db.commit()
 
+    @staticmethod
+    def _apply_partner_payment(db: Session, intent: PaymentIntent, event_type: str) -> None:
+        if intent.referral_attribution_id is None:
+            return
+        commission = db.scalar(select(PartnerCommission).where(
+            PartnerCommission.payment_intent_id == intent.id
+        ))
+        if event_type == "refund.succeeded":
+            if commission is not None:
+                commission.status = PartnerCommissionStatus.CANCELED
+            return
+        if event_type != "payment.succeeded" or commission is not None:
+            return
+        attribution = db.get(ReferralAttribution, intent.referral_attribution_id)
+        if attribution is None:
+            raise ValidationFailure("Attribution partenaire introuvable.")
+        partner = db.get(PartnerProfile, attribution.partner_id)
+        promo = db.get(PromoCode, attribution.promo_code_id)
+        if partner is None or promo is None:
+            raise ValidationFailure("Configuration partenaire introuvable.")
+        now = datetime.now(timezone.utc)
+        attribution.converted_at = attribution.converted_at or now
+        promo.redemption_count += 1
+        amount = intent.expected_amount_minor * partner.commission_bps // 10_000
+        db.add(PartnerCommission(
+            partner_id=partner.id,
+            attribution_id=attribution.id,
+            payment_intent_id=intent.id,
+            currency=intent.expected_currency,
+            net_revenue_minor=intent.expected_amount_minor,
+            commission_bps=partner.commission_bps,
+            amount_minor=amount,
+            status=PartnerCommissionStatus.PENDING,
+            available_at=now + timedelta(days=30),
+        ))
+
     def process_webhook(self, db: Session, headers: Mapping[str, str], body: bytes) -> str:
         try:
             parsed = self.provider.verify_and_parse_webhook(headers, body)
@@ -261,6 +335,7 @@ class BillingPGService:
                     intent.status = PaymentIntentStatus.FAILED
                 elif parsed.event_type == "refund.succeeded":
                     intent.status = PaymentIntentStatus.REFUNDED
+                self._apply_partner_payment(db, intent, parsed.event_type)
             elif parsed.event_type in SUBSCRIPTION_STATUSES:
                 if not parsed.subscription_id:
                     raise CorrelationDeferred("Identifiant d'abonnement absent.")

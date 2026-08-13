@@ -42,6 +42,7 @@ class CheckoutStart(BaseModel):
     customer_name: str | None = Field(default=None, min_length=2, max_length=120)
     customer_phone: str | None = Field(default=None, pattern=r"^\+?[0-9]{8,15}$")
     provider: str | None = Field(default=None, pattern=r"^(dodo|moneyfusion)$")
+    promo_code: str | None = Field(default=None, min_length=3, max_length=32)
 
 
 class CheckoutResponse(BaseModel):
@@ -223,6 +224,8 @@ def start_checkout(
             idempotency_key=idempotency_key,
             customer_name=payload.customer_name,
             customer_phone=payload.customer_phone,
+            promo_code=payload.promo_code,
+            actor_user_id=membership.user_id,
         )
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve)) from ve

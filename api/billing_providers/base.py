@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Mapping, Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # Provider-neutral requests/responses used by services and routes
@@ -21,6 +21,7 @@ class CheckoutRequest(BaseModel):
     expected_amount_minor: int
     expected_currency: str
     quantity: int = 1
+    discount_codes: list[str] = Field(default_factory=list)
     # Optional metadata forwarded to provider (e.g., local payment_intent_id)
     metadata: dict[str, str] | None = None
 
