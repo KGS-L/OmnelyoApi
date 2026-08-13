@@ -4,11 +4,29 @@ Upload/archivage des clips finaux sur Cloudflare R2 (compatible API S3 via boto3
 import logging
 import shutil
 from pathlib import Path
-import boto3
 
 import config
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_remote_key(remote_key: str) -> str:
+    normalized = remote_key.strip().lstrip("/")
+    if not normalized or ".." in normalized.split("/"):
+        raise ValueError("Clé de stockage R2 invalide.")
+    return normalized
+
+
+def _client():
+    import boto3
+
+    return boto3.client(
+        service_name="s3",
+        endpoint_url=config.R2_ENDPOINT_URL,
+        aws_access_key_id=config.R2_ACCESS_KEY_ID,
+        aws_secret_access_key=config.R2_SECRET_ACCESS_KEY,
+        region_name="auto",
+    )
 
 
 def upload_to_r2(local_path: Path, remote_key: str) -> str:
@@ -16,6 +34,7 @@ def upload_to_r2(local_path: Path, remote_key: str) -> str:
     Upload le fichier local vers R2 sous `remote_key`.
     Retourne l'URL publique/accessible du fichier.
     """
+    remote_key = _validate_remote_key(remote_key)
     # Si R2 n'est pas configuré, on utilise une copie locale en fallback
     if not all([config.R2_ACCESS_KEY_ID, config.R2_SECRET_ACCESS_KEY, config.R2_ENDPOINT_URL]):
         fallback_path = config.PROCESSED_DIR / remote_key
@@ -30,13 +49,7 @@ def upload_to_r2(local_path: Path, remote_key: str) -> str:
     logger.info(f"Téléversement de {local_path.name} vers R2 ({remote_key})...")
     
     try:
-        s3_client = boto3.client(
-            service_name="s3",
-            endpoint_url=config.R2_ENDPOINT_URL,
-            aws_access_key_id=config.R2_ACCESS_KEY_ID,
-            aws_secret_access_key=config.R2_SECRET_ACCESS_KEY,
-            region_name="auto"
-        )
+        s3_client = _client()
         
         # Déterminer le Content-Type pour le navigateur
         content_type = "binary/octet-stream"
@@ -65,3 +78,23 @@ def upload_to_r2(local_path: Path, remote_key: str) -> str:
     except Exception as e:
         logger.exception("Échec du téléversement sur Cloudflare R2")
         raise RuntimeError(f"Échec R2 : {e}") from e
+
+
+def download_from_r2(remote_key: str, destination: Path) -> Path:
+    """Récupère un objet privé R2 ou son équivalent du stockage local de secours."""
+    remote_key = _validate_remote_key(remote_key)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if not all([config.R2_ACCESS_KEY_ID, config.R2_SECRET_ACCESS_KEY, config.R2_ENDPOINT_URL]):
+        source = config.PROCESSED_DIR / remote_key
+        if not source.is_file():
+            raise FileNotFoundError(f"Objet local introuvable : {remote_key}")
+        shutil.copy2(source, destination)
+        return destination
+    try:
+        _client().download_file(config.R2_BUCKET_NAME, remote_key, str(destination))
+    except Exception as exc:
+        logger.exception("Échec du téléchargement depuis Cloudflare R2")
+        raise RuntimeError(f"Échec du téléchargement R2 : {exc}") from exc
+    if not destination.is_file() or destination.stat().st_size == 0:
+        raise RuntimeError("R2 a produit un fichier vide ou introuvable.")
+    return destination
