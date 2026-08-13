@@ -65,8 +65,74 @@ CREATE TABLE IF NOT EXISTS jobs (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Catalogue et comptabilité SaaS. workspace_id deviendra une FK PostgreSQL.
+CREATE TABLE IF NOT EXISTS billing_plans (
+    code TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    product_type TEXT NOT NULL, -- credits | subscription
+    price_minor INTEGER NOT NULL CHECK(price_minor >= 0),
+    currency TEXT NOT NULL,
+    credits INTEGER NOT NULL DEFAULT 0,
+    billing_interval TEXT,       -- month | year, NULL pour les crédits
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS billing_payments (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    plan_code TEXT NOT NULL REFERENCES billing_plans(code),
+    provider TEXT NOT NULL,
+    customer_email TEXT NOT NULL,
+    external_reference TEXT,
+    provider_reference TEXT,
+    amount_minor INTEGER NOT NULL,
+    currency TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    paid_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(provider, external_reference)
+);
+
+CREATE TABLE IF NOT EXISTS credit_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    payment_id TEXT UNIQUE REFERENCES billing_payments(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL UNIQUE,
+    plan_code TEXT NOT NULL REFERENCES billing_plans(code),
+    provider TEXT NOT NULL,
+    external_reference TEXT NOT NULL,
+    status TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    current_period_end TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS billing_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    processed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(provider, event_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_clips_status ON clips(status);
 CREATE INDEX IF NOT EXISTS idx_clips_scheduled ON clips(scheduled_publish_at);
 CREATE INDEX IF NOT EXISTS idx_clips_source ON clips(source_video_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_status_created ON jobs(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source_video_id);
+CREATE INDEX IF NOT EXISTS idx_billing_payments_workspace ON billing_payments(workspace_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_provider_reference_unique
+ON billing_payments(provider, provider_reference) WHERE provider_reference IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_credit_ledger_workspace ON credit_ledger(workspace_id);

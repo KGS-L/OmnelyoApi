@@ -90,6 +90,12 @@ JOB_WORKER_CONCURRENCY = max(1, int(os.getenv("JOB_WORKER_CONCURRENCY", 1)))
 JOB_POLL_INTERVAL_SEC = max(0.5, float(os.getenv("JOB_POLL_INTERVAL_SEC", 2)))
 JOB_MAX_ATTEMPTS = max(1, int(os.getenv("JOB_MAX_ATTEMPTS", 2)))
 
+# --- Facturation (mode manuel pour le MVP) ---
+MANUAL_PAYMENT_INSTRUCTIONS = os.getenv(
+    "MANUAL_PAYMENT_INSTRUCTIONS",
+    "Effectue le paiement par Orange Money ou Moov Money, puis transmets la référence au support.",
+)
+
 # --- DB ---
 DATABASE_PATH = BASE_DIR / os.getenv("DATABASE_PATH", "db/robot_short_yt.sqlite3")
 
