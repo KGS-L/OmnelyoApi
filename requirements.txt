@@ -10,8 +10,7 @@ scenedetect[opencv]>=0.6.4
 ffmpeg-python>=0.2.0
 
 # --- Génération contenu IA ---
-openai>=1.40.0            # utilisé aussi pour xAI Grok (API compatible OpenAI)
-elevenlabs>=1.5.0        # TTS (alternative: openai TTS)
+openai>=1.40.0            # LLM compatibles OpenAI + voix OpenAI TTS
 
 # --- Overlay / card visuelle ---
 Pillow>=10.4.0

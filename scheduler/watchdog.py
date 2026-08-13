@@ -34,8 +34,10 @@ def check_scheduled_clips() -> None:
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, youtube_video_id, scheduled_publish_at, status FROM clips "
-                "WHERE status = 'scheduled' AND scheduled_publish_at <= ?",
+                "SELECT c.id, c.youtube_video_id, c.scheduled_publish_at, c.status, "
+                "s.telegram_user_id, s.telegram_chat_id FROM clips c "
+                "JOIN source_videos s ON s.id = c.source_video_id "
+                "WHERE c.status = 'scheduled' AND c.scheduled_publish_at <= ?",
                 (now_str,)
             )
             delayed_clips = cursor.fetchall()
@@ -50,19 +52,22 @@ def check_scheduled_clips() -> None:
             clip_id = clip["id"]
             yt_video_id = clip["youtube_video_id"]
             scheduled_at = clip["scheduled_publish_at"]
+            user_id = clip["telegram_user_id"]
+            chat_id = clip["telegram_chat_id"]
 
             if not yt_video_id:
                 logger.warning(f"Clip #{clip_id} : Pas de youtube_video_id trouvé.")
                 _update_clip_status(clip_id, "failed")
                 send_telegram_notification(
                     f"⚠️ <b>[Watchdog]</b> Le clip #{clip_id} (prévu pour le {scheduled_at}) "
-                    "n'a pas d'identifiant YouTube associé !"
+                    "n'a pas d'identifiant YouTube associé !",
+                    chat_id,
                 )
                 continue
 
             try:
                 # Vérifier le statut réel sur YouTube
-                yt_status = youtube_uploader.check_publish_status(yt_video_id)
+                yt_status = youtube_uploader.check_publish_status(yt_video_id, user_id=user_id)
                 logger.info(f"Watchdog : Clip #{clip_id} (YT ID: {yt_video_id}) -> Statut YT : {yt_status}")
 
                 if yt_status == "public":
@@ -70,7 +75,8 @@ def check_scheduled_clips() -> None:
                     _update_clip_status(clip_id, "published")
                     send_telegram_notification(
                         f"📢 <b>[Watchdog] Succès !</b> Le clip #{clip_id} est maintenant public sur YouTube.\n"
-                        f"🔗 <a href='https://youtube.com/shorts/{yt_video_id}'>Voir le Short</a>"
+                        f"🔗 <a href='https://youtube.com/shorts/{yt_video_id}'>Voir le Short</a>",
+                        chat_id,
                     )
                 elif yt_status in ["private", "unlisted"]:
                     # Encore privé, on tolère un petit délai (YouTube traite la publication)
@@ -83,7 +89,8 @@ def check_scheduled_clips() -> None:
                         if now_dt - scheduled_dt > timedelta(hours=1):
                             send_telegram_notification(
                                 f"⚠️ <b>[Watchdog] Retard !</b> Le clip #{clip_id} (prévu le {scheduled_at}) "
-                                f"est toujours privé/non listé (actuel : {yt_status}) après plus de 1h."
+                                f"est toujours privé/non listé (actuel : {yt_status}) après plus de 1h.",
+                                chat_id,
                             )
                     except Exception:
                         logger.exception(f"Impossible de parser la date du clip {clip_id} : {scheduled_at}")
@@ -93,7 +100,8 @@ def check_scheduled_clips() -> None:
                     _update_clip_status(clip_id, "failed")
                     send_telegram_notification(
                         f"❌ <b>[Watchdog] Erreur !</b> Le Short <code>{yt_video_id}</code> "
-                        f"pour le clip #{clip_id} n'existe pas sur YouTube."
+                        f"pour le clip #{clip_id} n'existe pas sur YouTube.",
+                        chat_id,
                     )
             except Exception as e:
                 logger.exception(f"Watchdog : Impossible de vérifier le clip #{clip_id}")

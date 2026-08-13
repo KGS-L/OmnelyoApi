@@ -36,11 +36,36 @@ R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "")
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "robot-short-yt")
 R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL", "")
 
-# --- LLM ---
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL")
+# --- IA générative (fournisseurs compatibles avec le SDK OpenAI) ---
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").strip().lower()
 
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+XAI_API_KEY = os.getenv("XAI_API_KEY", "")
+XAI_MODEL = os.getenv("XAI_MODEL", "grok-3-mini")
+
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
+
+KIMI_API_KEY = os.getenv("KIMI_API_KEY", "")
+KIMI_MODEL = os.getenv("KIMI_MODEL", "kimi-k2.5")
+KIMI_BASE_URL = os.getenv("KIMI_BASE_URL", "https://api.moonshot.ai/v1")
+
+# --- Synthèse vocale OpenAI ---
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "openai").strip().lower()
+OPENAI_TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts")
+OPENAI_TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "coral")
+OPENAI_TTS_INSTRUCTIONS = os.getenv(
+    "OPENAI_TTS_INSTRUCTIONS",
+    "Parle en français avec une voix naturelle, captivante et dynamique, adaptée à une storytime.",
+)
 
 # --- Scheduling ---
 PUBLISH_SLOTS = os.getenv("PUBLISH_SLOTS", "12:00,17:00,20:00").split(",")

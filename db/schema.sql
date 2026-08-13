@@ -3,11 +3,13 @@
 -- Une vidéo source soumise via le bot (lien YouTube envoyé)
 CREATE TABLE IF NOT EXISTS source_videos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_user_id INTEGER,
+    telegram_chat_id INTEGER,
     source_url TEXT NOT NULL,
     local_path TEXT,
     submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
     status TEXT NOT NULL DEFAULT 'pending',
-        -- pending | downloading | cutting | done | failed
+        -- pending | downloading | cutting | done | partial | failed
     error_message TEXT
 );
 

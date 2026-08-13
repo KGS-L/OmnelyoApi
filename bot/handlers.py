@@ -132,6 +132,7 @@ async def cmd_disconnect(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Gère la réception des messages textes (liens vidéos ou texte inconnu)."""
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     text = update.message.text.strip()
     
     if text.startswith("http://") or text.startswith("https://"):
@@ -155,8 +156,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             with get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "INSERT INTO source_videos (source_url, status) VALUES (?, ?)",
-                    (text, "pending")
+                    "INSERT INTO source_videos "
+                    "(telegram_user_id, telegram_chat_id, source_url, status) VALUES (?, ?, ?, ?)",
+                    (user_id, chat_id, text, "pending")
                 )
                 source_video_id = cursor.lastrowid
                 conn.commit()

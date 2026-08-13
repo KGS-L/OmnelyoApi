@@ -1,17 +1,5 @@
-"""
-Génération du texte narratif "storytime" via l'API Grok (xAI),
-calibré pour correspondre à la durée du clip.
-L'API xAI est compatible OpenAI : on utilise le SDK openai
-avec un base_url différent.
-"""
-from openai import OpenAI
-
-import config
-
-_client = OpenAI(
-    api_key=config.GROQ_API_KEY,
-    base_url="https://api.groq.com/openai/v1",
-)
+"""Génération du storytime avec le fournisseur LLM configuré."""
+from core.llm_provider import create_llm_client, get_llm_settings
 
 # ~150 mots/min de lecture naturelle pour du storytime (rythme oral, pas de lecture rapide)
 WORDS_PER_MINUTE = 150
@@ -33,14 +21,17 @@ def generate_story(theme_hint: str, target_duration_sec: float) -> str:
         f"pas d'introduction du type 'voici une histoire', va directement au récit."
     )
 
-    response = _client.chat.completions.create(
-        model=config.XAI_MODEL,
+    settings = get_llm_settings()
+    client = create_llm_client(settings)
+    response = client.chat.completions.create(
+        model=settings.model,
         messages=[
             {"role": "user", "content": prompt}
         ],
         temperature=1,
-        max_completion_tokens=2048,
-        reasoning_effort="medium",
+        max_tokens=2048,
     )
-
-    return response.choices[0].message.content.strip()
+    content = response.choices[0].message.content
+    if not content:
+        raise RuntimeError(f"Le fournisseur LLM '{settings.name}' a retourné une réponse vide.")
+    return content.strip()

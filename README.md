@@ -108,8 +108,8 @@ RobotShortYt/
 - Un compte **Google Cloud** (gratuit) pour créer les identifiants API YouTube
 - Un bot **Telegram** (créé via [@BotFather](https://t.me/BotFather))
 - Un compte **Cloudflare R2** (ou autre stockage compatible S3) pour l'archivage
-- Une clé API **LLM** (Anthropic/OpenAI) pour la génération du storytime
-- Une clé API **TTS** (ElevenLabs ou équivalent) pour la voix off
+- Une clé API **LLM** (OpenAI, Gemini, Groq, xAI, Mistral ou Kimi)
+- Une clé **OpenAI API** pour la voix off TTS
 
 ## 🚀 Installation
 
@@ -177,8 +177,10 @@ autorise l'accès avec ton compte Google — la connexion se termine automatique
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Identifiants Cloudflare R2 |
 | `R2_BUCKET_NAME` | Nom du bucket R2 |
 | `R2_ENDPOINT_URL` | Endpoint R2 (ex: `https://<account_id>.r2.cloudflarestorage.com`) |
-| `ANTHROPIC_API_KEY` | Clé API pour la génération du storytime |
-| `ELEVENLABS_API_KEY` | Clé API pour la génération de la voix off |
+| `LLM_PROVIDER` | Fournisseur du storytime : `openai`, `gemini`, `groq`, `xai`, `mistral` ou `kimi` |
+| `<PROVIDER>_API_KEY` / `<PROVIDER>_MODEL` | Clé et modèle du fournisseur sélectionné |
+| `OPENAI_API_KEY` | Clé OpenAI, également utilisée pour la voix off |
+| `OPENAI_TTS_MODEL` / `OPENAI_TTS_VOICE` | Modèle et voix OpenAI TTS |
 | `PUBLISH_SLOTS` | Créneaux horaires de publication, ex: `12:00,17:00,20:00` |
 | `MAX_CLIPS_PER_DAY` | Nombre max de shorts publiés par jour |
 | `CLIP_MIN_DURATION_SEC` / `CLIP_MAX_DURATION_SEC` | Durée min/max des clips générés |

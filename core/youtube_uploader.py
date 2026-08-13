@@ -4,7 +4,7 @@ Utilise privacyStatus="private" + publishAt pour la publication différée.
 """
 import logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
@@ -31,6 +31,10 @@ def upload_scheduled_short(
     """
     youtube = get_youtube_service(user_id=user_id)  # ← passe user_id
 
+    if publish_at.tzinfo is None:
+        raise ValueError("publish_at doit contenir un fuseau horaire")
+    publish_at_utc = publish_at.astimezone(timezone.utc)
+
     body = {
         "snippet": {
             "title": title,
@@ -40,7 +44,7 @@ def upload_scheduled_short(
         },
         "status": {
             "privacyStatus": "private",
-            "publishAt": publish_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "publishAt": publish_at_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "selfDeclaredMadeForKids": False,
         },
     }
