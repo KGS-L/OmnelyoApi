@@ -54,6 +54,11 @@ class VideoStatus(str, enum.Enum):
     FAILED = "failed"
 
 
+class VideoKind(str, enum.Enum):
+    SOURCE = "source"
+    CLIP = "clip"
+
+
 class JobType(str, enum.Enum):
     INGEST = "ingest"
     PROCESS = "process"
@@ -204,10 +209,25 @@ class Video(Base):
     """Vidéo source ou artefact final appartenant à un workspace."""
 
     __tablename__ = "videos"
+    __table_args__ = (
+        UniqueConstraint("parent_video_id", "sequence_order", name="uq_videos_parent_sequence"),
+        CheckConstraint(
+            "(kind = 'SOURCE' AND parent_video_id IS NULL AND sequence_order IS NULL) OR "
+            "(kind = 'CLIP' AND parent_video_id IS NOT NULL AND sequence_order > 0)",
+            name="ck_videos_kind_parent",
+        ),
+    )
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
     )
+    parent_video_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("videos.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[VideoKind] = mapped_column(
+        Enum(VideoKind, name="video_kind"), default=VideoKind.SOURCE, index=True
+    )
+    sequence_order: Mapped[int | None] = mapped_column(Integer)
     title: Mapped[str | None] = mapped_column(String(255))
     source_url: Mapped[str | None] = mapped_column(String(2048))
     storage_key: Mapped[str | None] = mapped_column(String(1024))
@@ -224,6 +244,12 @@ class Video(Base):
     workspace: Mapped[Workspace] = relationship(back_populates="videos")
     jobs: Mapped[list["Job"]] = relationship(back_populates="video")
     publications: Mapped[list["Publication"]] = relationship(back_populates="video")
+    parent: Mapped["Video | None"] = relationship(
+        remote_side="Video.id", back_populates="clips"
+    )
+    clips: Mapped[list["Video"]] = relationship(
+        back_populates="parent", cascade="all, delete-orphan"
+    )
 
 
 class Job(Base):

@@ -13,6 +13,7 @@ from api.models import (
     PublicationVisibility,
     TelegramConnectionStatus,
     VideoStatus,
+    VideoKind,
     WorkspaceRole,
 )
 
@@ -126,6 +127,9 @@ class VideoResponse(BaseModel):
 
     id: uuid.UUID
     workspace_id: uuid.UUID
+    parent_video_id: uuid.UUID | None
+    kind: VideoKind
+    sequence_order: int | None
     title: str | None
     source_url: str | None
     storage_key: str | None

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from api.config import get_settings
@@ -27,6 +28,7 @@ from api.models import (
     WorkspaceMembership,
     WorkspaceRole,
     Video,
+    VideoKind,
 )
 from api.routes.channels import _get_channel
 from api.routes.jobs import _ensure_video_in_workspace, _get_job
@@ -298,6 +300,37 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
         self.db.refresh(job)
         self.assertEqual(job.status, JobStatus.QUEUED)
         self.assertEqual(job.attempts, 0)
+
+    def test_clip_sequence_is_unique_per_source(self):
+        source = Video(
+            workspace_id=self.workspace_a.id,
+            kind=VideoKind.SOURCE,
+            source_url="https://example.com/source.mp4",
+        )
+        self.db.add(source)
+        self.db.flush()
+        self.db.add(
+            Video(
+                workspace_id=self.workspace_a.id,
+                kind=VideoKind.CLIP,
+                parent_video_id=source.id,
+                sequence_order=1,
+                storage_key="clips/one.mp4",
+            )
+        )
+        self.db.flush()
+        with self.assertRaises(IntegrityError):
+            with self.db.begin_nested():
+                self.db.add(
+                    Video(
+                        workspace_id=self.workspace_a.id,
+                        kind=VideoKind.CLIP,
+                        parent_video_id=source.id,
+                        sequence_order=1,
+                        storage_key="clips/duplicate.mp4",
+                    )
+                )
+                self.db.flush()
 
     def test_stale_worker_job_is_requeued(self):
         stale_time = datetime.now(timezone.utc) - timedelta(minutes=10)

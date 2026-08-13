@@ -208,7 +208,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 - [x] Choisir l'orchestration : PostgreSQL durable avec leases, Redis comme signal de réveil et polling de secours.
 - [ ] Sortir les traitements longs des processus API et Telegram.
-- [~] Rendre chaque étape idempotente et rejouable (handler `INGEST` PostgreSQL ajouté ; rendu et publication restants).
+- [~] Rendre chaque étape idempotente et rejouable (ingestion et hiérarchie source/clips idempotente ajoutées ; rendu et publication restants).
 - [~] Ajouter heartbeat, timeout, reprise, annulation et limite de concurrence par workspace (leases et reprise PostgreSQL terminées ; limite par workspace restante).
 - [ ] Émettre la progression par polling initialement, puis SSE si nécessaire.
 

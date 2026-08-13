@@ -36,6 +36,15 @@ class ContentModelsTests(unittest.TestCase):
         self.assertIn("workspace_id", table.c)
         self.assertTrue(table.c.telegram_user_id.unique or table.c.telegram_user_id.index)
 
+    def test_video_clips_are_idempotently_ordered(self):
+        table = Base.metadata.tables["videos"]
+        names = {constraint.name for constraint in table.constraints}
+        self.assertIn("parent_video_id", table.c)
+        self.assertIn("kind", table.c)
+        self.assertIn("sequence_order", table.c)
+        self.assertIn("uq_videos_parent_sequence", names)
+        self.assertIn("ck_videos_kind_parent", names)
+
 
 if __name__ == "__main__":
     unittest.main()
