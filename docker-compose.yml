@@ -98,7 +98,6 @@ services:
 
   shortpilot-bot:
     <<: *common
-    profiles: [bot]
     build:
       context: .
     env_file:

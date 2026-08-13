@@ -176,8 +176,8 @@ en mode sandbox tant que l'application n'a pas passé son audit. Facebook requie
 une Page et Instagram un compte professionnel lié à une Page ; les permissions
 Meta avancées doivent être validées avant la production.
 
-La commande Telegram `/connect_youtube` appartient encore au mode historique. Le
-flux SaaS recommandé consiste à connecter les plateformes depuis l'interface web.
+Les plateformes sociales se connectent exclusivement depuis l'interface web.
+Le bot Telegram sert d'extension authentifiée au workspace ShortPilot.
 
 ## Variables d'environnement principales
 
@@ -217,10 +217,11 @@ supprime pas cette exigence pour les photos : il utilise également
 
 | Commande ou contenu | Action |
 |---|---|
-| `/connect_youtube` | connecter ou reconnecter une chaîne YouTube |
-| `/status` | consulter les traitements et publications |
+| `/start` ou `/help` | connecter Telegram ou afficher les commandes |
+| `/status` | vérifier la liaison avec le compte ShortPilot |
 | `/queue` | afficher les dix derniers jobs |
 | `/cancel UUID` | annuler un job PostgreSQL encore en attente |
+| `/disconnect` | délier Telegram du compte ShortPilot |
 | URL de vidéo | créer une vidéo et un job `INGEST` dans le workspace lié |
 | Fichier vidéo | importer un Short prêt à publier dans le workspace lié |
 

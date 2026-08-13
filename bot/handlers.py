@@ -7,7 +7,7 @@ import html
 import logging
 import uuid
 from pathlib import Path
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 import config
@@ -60,38 +60,76 @@ def _on_youtube_connected(user_id: int | None) -> None:
 # COMMANDES DU BOT
 # =============================================================================
 
+WELCOME_UNLINKED = (
+    "👋 <b>Welcome to ShortPilot Assistant</b>\n\n"
+    "Create, schedule and publish content across YouTube, TikTok, Instagram "
+    "and Facebook.\n\n"
+    "🔐 <b>Connect your ShortPilot account to continue</b>\n\n"
+    "1. Sign in to the ShortPilot web app.\n"
+    "2. Open <b>Settings → Integrations → Telegram</b>.\n"
+    "3. Select <b>Connect Telegram</b>.\n"
+    "4. Return here through the secure one-time link.\n\n"
+    "ShortPilot will never ask for your password or payment details in Telegram."
+)
+
+WELCOME_LINKED = (
+    "✅ <b>Your Telegram account is connected to ShortPilot.</b>\n\n"
+    "You can send a content URL or upload a video to add it to your workspace. "
+    "Choose its destinations and publication settings from the web app.\n\n"
+    "<b>Commands</b>\n"
+    "• /status — Check your ShortPilot connection\n"
+    "• /queue — View recent processing jobs\n"
+    "• /cancel ID — Cancel a queued job\n"
+    "• /help — Show this help message\n"
+    "• /disconnect — Disconnect Telegram from ShortPilot"
+)
+
+
+async def _has_shortpilot_account(telegram_user_id: int) -> bool:
+    def lookup() -> bool:
+        from api.database import SessionLocal
+        from api.integrations.telegram import get_active_telegram_connection
+
+        with SessionLocal() as db:
+            return get_active_telegram_connection(db, telegram_user_id) is not None
+
+    return await asyncio.to_thread(lookup)
+
+
+async def _require_shortpilot_account(update: Update) -> bool:
+    try:
+        connected = await _has_shortpilot_account(update.effective_user.id)
+    except Exception:
+        logger.exception("Unable to verify the Telegram account link")
+        await update.effective_message.reply_text(
+            "❌ ShortPilot could not verify your account. Please try again later."
+        )
+        return False
+    if not connected:
+        await update.effective_message.reply_text(WELCOME_UNLINKED, parse_mode="HTML")
+        return False
+    return True
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Affiche le message d'accueil et d'aide."""
+    """Show onboarding or the authenticated command menu."""
     if context.args and context.args[0].startswith("link_"):
         await _link_web_account(update, context.args[0][5:])
         return
-    help_text = (
-        "🤖 <b>ShortPilot</b>\n\n"
-        "Je t'aide à créer et publier des shorts YouTube automatiquement.\n\n"
-        "<b>Commandes disponibles :</b>\n"
-        "• /connect_youtube — Connecter ta chaîne YouTube\n"
-        "• /status — Vérifier l'état de la connexion\n"
-        "• /queue — Voir tes traitements\n"
-        "• /cancel ID — Annuler un traitement en attente\n"
-        "• /disconnect — Déconnecter YouTube\n"
-        "• /disconnect_shortpilot — Délier ce compte du site ShortPilot\n"
-        "• /help — Afficher ce message\n\n"
-        "<b>Créer depuis un lien :</b> envoie une URL YouTube/TikTok/etc.\n\n"
-        "<b>Publier ton propre Short :</b> envoie une vidéo verticale de "
-        f"{config.TELEGRAM_UPLOAD_MAX_MB} Mo maximum et "
-        f"{config.UPLOADED_SHORT_MAX_DURATION_SEC // 60} minutes maximum.\n"
-        "Légende facultative :\n"
-        "• <code>auto | Mon titre</code>\n"
-        "• <code>2026-08-20 17:00 | Mon titre</code>\n"
-        f"Les dates utilisent le fuseau {config.TIMEZONE}."
+    try:
+        connected = await _has_shortpilot_account(update.effective_user.id)
+    except Exception:
+        logger.exception("Unable to load Telegram onboarding status")
+        connected = False
+    await update.message.reply_text(
+        WELCOME_LINKED if connected else WELCOME_UNLINKED,
+        parse_mode="HTML",
     )
-    await update.message.reply_text(help_text, parse_mode="HTML")
 
 
 async def _link_web_account(update: Update, token: str) -> None:
     """Consomme le jeton web et associe le compte Telegram au workspace."""
     if not token:
-        await update.message.reply_text("❌ Lien de connexion invalide.")
+        await update.message.reply_text("❌ This connection link is invalid.")
         return
 
     def attach():
@@ -106,7 +144,7 @@ async def _link_web_account(update: Update, token: str) -> None:
             Redis.from_url(settings.redis_url), settings.telegram_link_ttl_seconds
         ).consume(token)
         if pending is None:
-            raise ValueError("Ce lien est invalide, expiré ou déjà utilisé.")
+            raise ValueError("This link is invalid, expired or has already been used.")
         with SessionLocal() as db:
             attach_telegram_account(
                 db,
@@ -122,11 +160,13 @@ async def _link_web_account(update: Update, token: str) -> None:
         return
     except Exception:
         logger.exception("Échec de liaison du compte Telegram au compte web")
-        await update.message.reply_text("❌ La connexion a échoué. Génère un nouveau lien.")
+        await update.message.reply_text(
+            "❌ Connection failed. Generate a new Telegram link from ShortPilot."
+        )
         return
     await update.message.reply_text(
-        "✅ <b>Telegram est maintenant connecté à ton compte ShortPilot.</b>\n\n"
-        "Tu peux revenir dans l'interface web.",
+        "✅ <b>Telegram is now connected to your ShortPilot account.</b>\n\n"
+        "You can return to the web app or use /help to view available commands.",
         parse_mode="HTML",
     )
 
@@ -156,31 +196,17 @@ async def cmd_connect_youtube(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Affiche le statut actuel de la connexion et des créneaux de publication."""
-    user_id = update.effective_user.id
-    youtube_ok = youtube_auth.is_connected(user_id=user_id)
-    
-    def web_connection_active() -> bool:
-        from api.database import SessionLocal
-        from api.integrations.telegram import get_active_telegram_connection
-
-        with SessionLocal() as db:
-            return get_active_telegram_connection(db, user_id) is not None
-
-    try:
-        shortpilot_connected = await asyncio.to_thread(web_connection_active)
-    except Exception:
-        logger.warning("Statut de liaison web indisponible", exc_info=True)
-        shortpilot_connected = False
-    
-    status_text = (
-        "📊 <b>État du bot</b>\n\n"
-        f"YouTube : {'✅ Connecté' if youtube_ok else '❌ Non connecté'}\n"
-        f"Compte web : {'✅ Connecté' if shortpilot_connected else '❌ Non connecté'}\n"
-        "Pipeline : PostgreSQL / workers SaaS\n"
-        f"Fuseau horaire : {config.TIMEZONE}"
+    """Show the authenticated ShortPilot integration status."""
+    if not await _require_shortpilot_account(update):
+        return
+    await update.message.reply_text(
+        "📊 <b>ShortPilot status</b>\n\n"
+        "Account connection: ✅ Active\n"
+        "Processing pipeline: ✅ Available\n"
+        f"Workspace timezone: {config.TIMEZONE}\n\n"
+        "Open the web app to manage social accounts and publication settings.",
+        parse_mode="HTML",
     )
-    await update.message.reply_text(status_text, parse_mode="HTML")
 
 
 async def cmd_disconnect(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -212,15 +238,18 @@ async def cmd_disconnect_shortpilot(
         return
     if revoked:
         await update.message.reply_text(
-            "🔌 Ton compte Telegram est déconnecté du site ShortPilot.\n"
-            "Tu peux le reconnecter depuis Paramètres → Intégrations → Telegram."
+            "🔌 Telegram has been disconnected from ShortPilot.\n"
+            "Reconnect it from Settings → Integrations → Telegram in the web app."
         )
     else:
-        await update.message.reply_text("ℹ️ Ce compte Telegram n'est pas lié au site ShortPilot.")
+        await update.message.reply_text("ℹ️ This Telegram account is not connected to ShortPilot.")
 
 
 async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Affiche les derniers jobs de l'utilisateur."""
+    if not await _require_shortpilot_account(update):
+        return
+
     def load_jobs():
         from api.database import SessionLocal
         from api.integrations.telegram_jobs import list_jobs_for_telegram
@@ -234,7 +263,7 @@ async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(f"❌ {html.escape(str(exc))}", parse_mode="HTML")
         return
     if not jobs:
-        await update.message.reply_text("📭 Ta file de traitements est vide.")
+        await update.message.reply_text("📭 Your processing queue is empty.")
         return
     icons = {
         "queued": "⏳",
@@ -243,21 +272,23 @@ async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "failed": "❌",
         "cancelled": "🚫",
     }
-    lines = ["📋 <b>Tes derniers traitements</b>"]
+    lines = ["📋 <b>Your recent processing jobs</b>"]
     for job in jobs:
         job_status = job.status.value
         lines.append(
             f"{icons.get(job_status, '•')} <code>#{job.id}</code> "
             f"{job.type.value} — {job_status} ({job.progress} %)"
         )
-    lines.append("\nAnnulation : <code>/cancel ID</code> (job en attente uniquement).")
+    lines.append("\nCancel: <code>/cancel ID</code> (queued jobs only).")
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Annule un job appartenant à l'utilisateur s'il n'a pas commencé."""
+    if not await _require_shortpilot_account(update):
+        return
     if not context.args:
-        await update.message.reply_text("Utilisation : /cancel UUID")
+        await update.message.reply_text("Usage: /cancel UUID")
         return
     try:
         job_id = uuid.UUID(context.args[0].lstrip("#"))
@@ -291,6 +322,8 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Gère la réception des messages textes (liens vidéos ou texte inconnu)."""
+    if not await _require_shortpilot_account(update):
+        return
     user_id = update.effective_user.id
     text = update.message.text.strip()
     
@@ -334,6 +367,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def handle_video_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Télécharge, valide et met en file un Short envoyé dans Telegram."""
+    if not await _require_shortpilot_account(update):
+        return
     from bot.upload_helpers import parse_upload_caption, validate_uploaded_short
 
     message = update.effective_message
@@ -426,12 +461,10 @@ def register_handlers(app: Application) -> None:
     
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_start))
-    app.add_handler(CommandHandler("connect_youtube", cmd_connect_youtube))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("queue", cmd_queue))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
-    app.add_handler(CommandHandler("disconnect", cmd_disconnect))
-    app.add_handler(CommandHandler("disconnect_shortpilot", cmd_disconnect_shortpilot))
+    app.add_handler(CommandHandler("disconnect", cmd_disconnect_shortpilot))
     app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_upload))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
@@ -440,6 +473,16 @@ async def post_init(app: Application) -> None:
     """Appelé par l'Application de python-telegram-bot une fois la boucle lancée."""
     global _loop
     _loop = asyncio.get_running_loop()
+    await app.bot.set_my_commands(
+        [
+            BotCommand("start", "Start ShortPilot Assistant"),
+            BotCommand("help", "View available commands"),
+            BotCommand("status", "Check your ShortPilot connection"),
+            BotCommand("queue", "View recent processing jobs"),
+            BotCommand("cancel", "Cancel a queued job"),
+            BotCommand("disconnect", "Disconnect Telegram from ShortPilot"),
+        ]
+    )
     logger.info("Boucle d'événements du bot récupérée avec succès dans post_init")
 
 
