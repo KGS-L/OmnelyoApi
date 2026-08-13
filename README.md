@@ -2,299 +2,315 @@
 
 [![CI](https://github.com/KGS-L/shortpilot-platform-api/actions/workflows/ci.yml/badge.svg)](https://github.com/KGS-L/shortpilot-platform-api/actions/workflows/ci.yml)
 
-Backend open source de **ShortPilot**, une plateforme d'automatisation de création,
-programmation et publication de vidéos courtes.
+Backend open source de **ShortPilot**, une plateforme de création, de
+programmation et de publication de vidéos courtes. Le dépôt réunit actuellement :
 
-Bot Telegram qui automatise la création et la publication de YouTube Shorts :
-tu envoies un lien de vidéo, le bot la découpe en plusieurs séquences, génère une
-narration "storytime" avec voix IA, et programme automatiquement la publication
-sur YouTube (plusieurs shorts par jour, à horaires fixes).
+- un bot Telegram capable de transformer une vidéo source en YouTube Shorts ;
+- l'envoi et la programmation de Shorts déjà montés ;
+- une API FastAPI destinée au futur frontend SaaS ;
+- une authentification par email/OTP et Google ;
+- une base multi-tenant PostgreSQL et une abstraction de facturation extensible.
 
-## ✨ Fonctionnalités
+> Le frontend SaaS n'est pas encore inclus dans ce dépôt. Le bot et le socle API
+> sont opérationnels, tandis que certaines intégrations SaaS sont encore à
+> connecter (envoi d'emails, routes de facturation et prestataire de paiement).
 
-- 🔗 Soumission d'une vidéo source via un simple lien envoyé au bot Telegram
-- 📱 Envoi direct de Shorts personnels avec date et titre facultatifs
-- ✂️ Découpage intelligent en clips de 1 à 2m30 (détection de scènes, pas de coupe fixe arbitraire)
-- 🔇 Suppression automatique de l'audio original
-- 🤖 Génération d'un texte narratif ("storytime") via LLM, calibré sur la durée du clip
-- 🗣️ Génération de la voix off par synthèse vocale IA
-- 🖼️ Incrustation d'une card visuelle personnalisée (style commentaire) en haut de la vidéo
-- ☁️ Archivage des clips finaux sur stockage objet (Cloudflare R2)
-- 📅 Programmation automatique sur YouTube (2-3 publications/jour, créneaux configurables)
-- 🔐 Connexion YouTube en un clic depuis Telegram (OAuth2 via lien, aucune manipulation manuelle)
-- 🛎️ Notifications Telegram (résultat du découpage, confirmation de programmation, alertes en cas d'échec)
-- ♻️ File persistante : les travaux en attente survivent aux redémarrages
-- 🐳 Entièrement dockerisé, déployable sur n'importe quel VPS
+## Fonctionnalités
 
-## 🏗️ Architecture
+### Automatisation vidéo et Telegram
 
+- soumission d'une vidéo source par URL ;
+- téléchargement avec `yt-dlp` ;
+- détection de scènes et découpage avec PySceneDetect et FFmpeg ;
+- génération d'un storytime avec OpenAI, Gemini, Groq, xAI/Grok, Mistral ou Kimi ;
+- synthèse vocale avec OpenAI TTS ;
+- suppression de l'audio original et ajout d'une carte visuelle ;
+- archivage des rendus sur Cloudflare R2 (API compatible S3) ;
+- programmation et publication via YouTube Data API v3 ;
+- réception directe d'un Short Telegram et programmation manuelle ou automatique ;
+- file SQLite persistante, reprise après redémarrage et notifications Telegram ;
+- watchdog de contrôle des publications.
+
+### Socle SaaS
+
+- API REST FastAPI avec documentation OpenAPI ;
+- comptes utilisateurs PostgreSQL ;
+- connexion passwordless par code OTP stocké temporairement dans Redis ;
+- connexion Google Identity Services ;
+- access tokens JWT et refresh tokens rotatifs/révocables ;
+- workspaces et rôles `owner`, `admin` et `member` ;
+- migrations PostgreSQL avec Alembic ;
+- `BillingService` indépendant du prestataire de paiement ;
+- paiement manuel Mobile Money disponible dans le domaine de facturation ;
+- environnements Docker distincts pour le développement et la production ;
+- CI GitHub Actions et déploiement VPS manuel.
+
+## Architecture actuelle
+
+```text
+Utilisateur Telegram                         Futur frontend web
+        │                                            │
+        ▼                                            ▼
+  Bot Telegram ──► file persistante SQLite      API FastAPI
+        │                                       │        │
+        ▼                                       ▼        ▼
+  Pipeline vidéo                            PostgreSQL  Redis
+  yt-dlp → scènes → storytime/TTS           comptes,   OTP
+        → overlay → FFmpeg                   workspaces sessions
+        │
+        ├──► Cloudflare R2 (archive)
+        └──► YouTube Data API (publication planifiée)
+
+                 Caddy termine HTTPS en production
 ```
-Toi ──(lien vidéo)──▶ Bot Telegram
-                            │
-                            ▼
-                    ┌───────────────┐
-                    │  Scheduler /  │
-                    │  Orchestrateur│
-                    └───────┬───────┘
-                            │
-        ┌───────────────────┼───────────────────┐
-        ▼                   ▼                    ▼
-  Téléchargement      Découpage vidéo      Génération contenu
-  (yt-dlp)            (PySceneDetect       (LLM storytime
-                        + ffmpeg)            + TTS voix off
-                                              + card overlay)
-        │                   │                    │
-        └───────────────────┼────────────────────┘
-                            ▼
-                    Upload archive (R2)
-                            │
-                            ▼
-                    Upload programmé YouTube
-                    (API Data v3, publishAt)
-                            │
-                            ▼
-                    Notification Telegram
-                            │
-                            ▼
-              Watchdog quotidien (vérifie que
-              les publications prévues ont bien
-              eu lieu, alerte sinon)
-```
 
-Toute l'authentification YouTube passe par OAuth2 **piloté depuis Telegram** :
-la commande `/connect_youtube` génère un lien d'autorisation Google que tu ouvres
-dans ton navigateur (peu importe l'appareil). Un petit serveur web embarqué reçoit
-la confirmation de Google et termine la connexion automatiquement — aucune
-manipulation sur le serveur lui-même.
+Le projet utilise temporairement deux stockages relationnels :
 
-## 📁 Structure du projet
+- **PostgreSQL** est la source de vérité du backend SaaS (utilisateurs,
+  identités, workspaces et sessions) ;
+- **SQLite** conserve encore la file du bot et les données métier historiques.
 
-```
+La migration complète des traitements vidéo vers PostgreSQL/Redis fait partie de
+la prochaine phase du SaaS.
+
+## Structure du dépôt
+
+```text
 shortpilot-platform-api/
-├── main.py                    # point d'entrée (bot + serveur OAuth)
-├── config.py                   # chargement de la configuration (.env)
+├── api/                         # API FastAPI, auth et modèle multi-tenant
+├── billing/                     # BillingService et adaptateurs de paiement
+├── bot/                         # bot Telegram et callback OAuth YouTube
+├── core/                        # pipeline vidéo, LLM, TTS, R2 et YouTube
+├── db/                          # base SQLite historique du bot
+├── migrations/                  # migrations Alembic PostgreSQL
+├── scheduler/                   # file, programmation et watchdog
+├── tests/                       # tests unitaires et sécurité API
+├── .github/workflows/           # CI et déploiement VPS
+├── docker-compose.yml           # services communs
+├── docker-compose.override.yml  # développement, chargé automatiquement
+├── docker-compose.prod.yml      # Caddy et configuration de production
+├── Caddyfile                    # HTTPS et reverse proxy
 ├── Dockerfile
-├── docker-compose.yml
-├── Caddyfile                    # reverse proxy HTTPS automatique
-│
-├── bot/
-│   ├── telegram_bot.py           # initialisation du bot
-│   ├── handlers.py                # commandes (/status, /connect_youtube...)
-│   └── oauth_server.py             # serveur web du callback OAuth
-│
-├── core/
-│   ├── downloader.py               # téléchargement vidéo (yt-dlp)
-│   ├── scene_detect.py              # détection de scènes
-│   ├── video_cutter.py               # découpage final (ffmpeg)
-│   ├── storytime.py                   # génération du texte narratif (LLM)
-│   ├── tts.py                          # génération de la voix off
-│   ├── overlay.py                       # génération + incrustation de la card
-│   ├── storage_r2.py                     # archivage Cloudflare R2
-│   ├── youtube_auth.py                    # OAuth2 YouTube (flow web)
-│   └── youtube_uploader.py                 # upload + programmation YouTube
-│
-├── db/
-│   ├── schema.sql                  # définition des tables
-│   ├── models.py                    # structures de données
-│   └── database.py                   # connexion SQLite
-│
-├── scheduler/
-│   ├── scheduler.py                # orchestration du pipeline + créneaux
-│   └── watchdog.py                  # vérification quotidienne des publications
-│
-├── credentials/                 # secrets YouTube (ignoré par git)
-├── storage/                     # fichiers vidéo temporaires et finaux
-├── logs/
-└── db/                          # base SQLite (créée au premier lancement)
+├── main.py                      # point d'entrée du bot
+└── config.py                    # configuration du pipeline historique
 ```
 
-## 🧰 Prérequis
+## Prérequis
 
-- Un VPS (Linux) avec **Docker** et **Docker Compose** installés
-- Un **nom de domaine** pointant vers l'IP du VPS (nécessaire pour le HTTPS, requis par Google OAuth)
-- Un compte **Google Cloud** (gratuit) pour créer les identifiants API YouTube
-- Un bot **Telegram** (créé via [@BotFather](https://t.me/BotFather))
-- Un compte **Cloudflare R2** (ou autre stockage compatible S3) pour l'archivage
-- Une clé API **LLM** (OpenAI, Gemini, Groq, xAI, Mistral ou Kimi)
-- Une clé **OpenAI API** pour la voix off TTS
+Pour un lancement avec Docker :
 
-## 🚀 Installation
+- Docker Engine et Docker Compose v2 ;
+- un bot Telegram créé avec [@BotFather](https://t.me/BotFather) ;
+- un projet Google Cloud avec YouTube Data API v3 activée ;
+- un domaine pointant vers le serveur pour les callbacks OAuth en HTTPS ;
+- un bucket Cloudflare R2 et ses identifiants S3 ;
+- au moins une clé de fournisseur LLM ;
+- une clé OpenAI pour la voix off.
 
-### 1. Cloner le projet
+Pour une installation sans Docker, Python 3.11+, PostgreSQL 16, Redis 7 et FFmpeg
+sont nécessaires.
+
+## Installation locale avec Docker
 
 ```bash
 git clone https://github.com/KGS-L/shortpilot-platform-api.git
 cd shortpilot-platform-api
-```
-
-### 2. Créer le bot Telegram
-
-1. Ouvre une conversation avec [@BotFather](https://t.me/BotFather)
-2. `/newbot`, choisis un nom et un username
-3. Récupère le token fourni (format `123456:ABC-DEF...`)
-
-### 3. Configurer l'API YouTube (Google Cloud Console)
-
-1. Crée un projet sur [console.cloud.google.com](https://console.cloud.google.com/)
-2. Active l'API **YouTube Data API v3** (menu *APIs et services > Bibliothèque*)
-3. Configure l'**écran de consentement OAuth** (type *External*, ajoute ton compte comme *Test user*)
-4. Crée un **ID client OAuth** de type **Application Web**
-5. Dans *URIs de redirection autorisés*, ajoute : `https://ton-domaine.com/oauth2callback`
-6. Télécharge le fichier JSON généré, place-le dans `credentials/client_secret.json`
-
-### 4. Configurer les variables d'environnement
-
-```bash
 cp .env.example .env
 ```
 
-Édite `.env` et renseigne toutes les valeurs (voir tableau ci-dessous).
+Renseigne ensuite `.env`, puis place le fichier OAuth YouTube téléchargé depuis
+Google Cloud dans `credentials/client_secret.json`.
 
-### 5. Configurer le domaine dans le Caddyfile
-
-Édite `Caddyfile` et remplace `ton-domaine.com` par ton vrai domaine.
-
-### 6. Lancer
+Lance toute la stack de développement :
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose up -d --build
+docker compose ps
+docker compose logs -f
 ```
 
-Vérifie les logs :
+`docker-compose.override.yml` est automatiquement appliqué en développement. Les
+services locaux sont alors accessibles ici :
 
-```bash
-docker compose logs -f robot-short-yt
-```
-
-### 7. Connecter ta chaîne YouTube
-
-Dans Telegram, envoie `/connect_youtube` à ton bot. Clique le lien reçu,
-autorise l'accès avec ton compte Google — la connexion se termine automatiquement.
-
-## ⚙️ Configuration (`.env`)
-
-| Variable | Description |
+| Service | Adresse |
 |---|---|
-| `TELEGRAM_BOT_TOKEN` | Token du bot (via @BotFather) |
-| `TELEGRAM_ADMIN_CHAT_ID` | Ton chat ID Telegram (pour les notifications/alertes) |
-| `YOUTUBE_CLIENT_SECRETS_FILE` | Chemin vers le JSON téléchargé de Google Cloud |
-| `YOUTUBE_TOKEN_FILE` | Chemin où le token OAuth sera sauvegardé |
-| `YOUTUBE_REDIRECT_URI` | URL publique du callback, ex: `https://ton-domaine.com/oauth2callback` |
-| `OAUTH_CALLBACK_PORT` | Port interne du serveur callback (défaut `8420`) |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Identifiants Cloudflare R2 |
-| `R2_BUCKET_NAME` | Nom du bucket R2 |
-| `R2_ENDPOINT_URL` | Endpoint R2 (ex: `https://<account_id>.r2.cloudflarestorage.com`) |
-| `LLM_PROVIDER` | Fournisseur du storytime : `openai`, `gemini`, `groq`, `xai`, `mistral` ou `kimi` |
-| `<PROVIDER>_API_KEY` / `<PROVIDER>_MODEL` | Clé et modèle du fournisseur sélectionné |
-| `OPENAI_API_KEY` | Clé OpenAI, également utilisée pour la voix off |
-| `OPENAI_TTS_MODEL` / `OPENAI_TTS_VOICE` | Modèle et voix OpenAI TTS |
-| `PUBLISH_SLOTS` | Créneaux horaires de publication, ex: `12:00,17:00,20:00` |
-| `MAX_CLIPS_PER_DAY` | Nombre max de shorts publiés par jour |
-| `CLIP_MIN_DURATION_SEC` / `CLIP_MAX_DURATION_SEC` | Durée min/max des clips générés |
-| `TIMEZONE` | Fuseau horaire pour la programmation |
-| `DATABASE_PATH` | Chemin de la base SQLite |
-| `TELEGRAM_UPLOAD_MAX_MB` | Taille maximale d'un Short reçu par Telegram (maximum technique : 20 Mo) |
-| `UPLOADED_SHORT_MAX_DURATION_SEC` | Durée maximale d'un Short importé (maximum YouTube : 180 s) |
-| `MANUAL_SCHEDULE_MIN_LEAD_MINUTES` | Délai minimal avant une programmation manuelle |
-| `JOB_WORKER_CONCURRENCY` | Nombre maximal de vidéos traitées simultanément (défaut recommandé : 1) |
-| `JOB_MAX_ATTEMPTS` | Nombre maximal de prises en charge après interruption |
+| API | `http://localhost:8000` |
+| Swagger | `http://localhost:8000/docs` |
+| PostgreSQL | `localhost:5432` |
+| Redis | `localhost:6379` |
+| Callback OAuth du bot | `localhost:8420` |
 
-## 💬 Commandes du bot
-
-| Commande | Description |
-|---|---|
-| `/connect_youtube` | Connecte (ou reconnecte) une chaîne YouTube |
-| `/status` | Affiche l'état des vidéos en cours de traitement / programmées |
-| `/queue` | Affiche les dix derniers traitements et leur état |
-| `/cancel ID` | Annule un traitement qui n'a pas encore commencé |
-| *(lien vidéo)* | Soumet une nouvelle vidéo source pour découpage et programmation |
-| *(fichier vidéo)* | Programme un Short personnel, automatiquement ou à une date choisie |
-
-### Envoyer son propre Short
-
-Envoie la vidéo directement au bot, comme vidéo Telegram ou comme fichier vidéo.
-Par défaut, elle sera placée au prochain créneau disponible. La vidéo doit être
-verticale ou carrée, durer au maximum 3 minutes et respecter la taille configurée
-(19 Mo par défaut à cause de la limite de téléchargement de la Bot API Telegram).
-
-La légende permet de choisir le titre et la programmation :
-
-```text
-auto | Mon titre de Short
-```
-
-ou, pour imposer une date dans le fuseau `TIMEZONE` :
-
-```text
-2026-08-20 17:00 | Mon titre de Short
-```
-
-Pour programmer plusieurs Shorts, envoie chaque vidéo séparément avec sa propre
-légende. Le bot refuse les collisions de créneaux et applique `MAX_CLIPS_PER_DAY`
-par utilisateur.
-
-### File de traitements
-
-Chaque lien ou fichier reçoit un identifiant, par exemple `#12`. `/queue` affiche
-les états `queued`, `running`, `completed`, `failed` ou `cancelled`. La commande
-`/cancel 12` fonctionne tant que le job est encore `queued`. Un job déjà lancé ne
-peut pas être interrompu brutalement, afin d'éviter un fichier ou un upload YouTube
-partiellement créé.
-
-Au démarrage, les jobs marqués `running` lors d'un arrêt précédent sont remis en
-attente s'ils n'ont pas dépassé `JOB_MAX_ATTEMPTS`. La concurrence vaut 1 par
-défaut pour éviter que plusieurs encodages ffmpeg saturent le serveur.
-
-## 🐳 Docker
-
-Le projet est entièrement conteneurisé :
-
-- **`robot-short-yt`** — le bot, le pipeline de traitement et le serveur OAuth interne
-- **`caddy`** — reverse proxy avec HTTPS automatique (Let's Encrypt) devant le callback OAuth
-
-Aucun port du conteneur principal n'est exposé directement : seul Caddy est accessible
-depuis l'extérieur (ports 80/443), ce qui limite la surface d'attaque.
-
-```bash
-docker compose up -d --build       # développement (charge automatiquement override)
-docker compose logs -f             # suivre les logs de développement
-
-# Production : n'ajoute jamais docker-compose.override.yml
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
-```
-
-Les dossiers `credentials/`, `storage/`, `logs/` et `db/` sont montés en volumes :
-les données persistent entre les redéploiements.
-
-## 🌐 Backend SaaS
-
-Le socle FastAPI/PostgreSQL/Redis est séparé du bot historique. Pour le lancer en
-développement :
+Pour ne lancer que le backend web :
 
 ```bash
 docker compose up -d postgres redis api
 ```
 
-La documentation interactive est disponible sur `http://localhost:8000/docs`.
-Consulte [BACKEND_SAAS.md](BACKEND_SAAS.md) pour les routes d'authentification,
-les sessions et le modèle multi-tenant. Le bot utilise encore SQLite pendant la
-transition ; les comptes et workspaces web utilisent PostgreSQL.
+## Configuration Google
 
-## 🔒 Sécurité & bonnes pratiques
+Deux identifiants Google différents sont utilisés :
 
-- Ne commit jamais `.env` ni `credentials/client_secret.json` (déjà exclus via `.gitignore`/`.dockerignore`)
-- Un seul compte Google (celui ajouté comme *Test user*) peut se connecter tant que
-  l'écran de consentement OAuth n'est pas passé en mode *Production* (suffisant pour un usage personnel)
-- Chaque déploiement (bot + projet Google Cloud + domaine) est indépendant :
-  ce projet peut être déployé plusieurs fois par différentes personnes, chacune avec ses propres clés
+1. **OAuth YouTube** autorise ShortPilot à publier sur une chaîne. Crée un client
+   OAuth de type « Application Web », configure exactement l'URI présente dans
+   `YOUTUBE_REDIRECT_URI`, puis ajoute le JSON dans `credentials/`.
+2. **Google Identity Services** connecte les utilisateurs du futur frontend SaaS.
+   Son client Web doit être renseigné dans `GOOGLE_WEB_CLIENT_ID`.
 
-## 📜 Licence
+Après le démarrage du bot, envoie `/connect_youtube` dans Telegram et ouvre le lien
+d'autorisation reçu.
 
-À définir selon ton usage (MIT recommandé si tu comptes le partager publiquement).
+## Variables d'environnement principales
 
-## ⚠️ Avertissement
+La liste exhaustive et les valeurs d'exemple se trouvent dans
+[`.env.example`](.env.example).
 
-Ce projet republie du contenu vidéo à partir de sources externes. Assure-toi de
-respecter les droits d'auteur et les conditions d'utilisation des plateformes
-sources avant toute publication.
+| Groupe | Variables principales |
+|---|---|
+| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID` |
+| YouTube | `YOUTUBE_CLIENT_SECRETS_FILE`, `YOUTUBE_TOKEN_FILE`, `YOUTUBE_REDIRECT_URI` |
+| Stockage R2 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_ENDPOINT_URL` |
+| Storytime | `LLM_PROVIDER` et les couples `<PROVIDER>_API_KEY` / `<PROVIDER>_MODEL` |
+| Voix | `OPENAI_API_KEY`, `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE` |
+| Programmation | `PUBLISH_SLOTS`, `MAX_CLIPS_PER_DAY`, `TIMEZONE` |
+| Limites vidéo | `TELEGRAM_UPLOAD_MAX_MB`, `UPLOADED_SHORT_MAX_DURATION_SEC` |
+| Backend SaaS | `API_DATABASE_URL`, `REDIS_URL`, `API_JWT_SECRET`, `FRONTEND_ORIGINS` |
+| Auth Google | `GOOGLE_WEB_CLIENT_ID` |
+| Domaines | `BOT_DOMAIN`, `API_DOMAIN` |
+
+En production, utilise un secret `API_JWT_SECRET` aléatoire d'au moins 32
+caractères et laisse `EXPOSE_DEV_OTP=false`.
+
+## Commandes Telegram
+
+| Commande ou contenu | Action |
+|---|---|
+| `/connect_youtube` | connecter ou reconnecter une chaîne YouTube |
+| `/status` | consulter les traitements et publications |
+| `/queue` | afficher les dix derniers jobs |
+| `/cancel ID` | annuler un job encore en attente |
+| URL de vidéo | lancer le pipeline de découpage et de publication |
+| Fichier vidéo | programmer un Short déjà monté |
+
+Pour un fichier envoyé directement, la légende accepte :
+
+```text
+auto | Mon titre de Short
+```
+
+ou une date exprimée dans le fuseau `TIMEZONE` :
+
+```text
+2026-08-20 17:00 | Mon titre de Short
+```
+
+La Bot API Telegram limite actuellement le téléchargement configuré à 20 Mo au
+maximum ; le projet utilise 19 Mo par défaut. La durée maximale configurable est
+de 180 secondes. Chaque vidéo doit être envoyée séparément.
+
+## API SaaS
+
+Toutes les routes applicatives sont préfixées par `/v1`.
+
+| Méthode | Route | Description |
+|---|---|---|
+| `GET` | `/health` | état de l'API |
+| `POST` | `/v1/auth/email/request-otp` | demander un code de connexion |
+| `POST` | `/v1/auth/email/verify` | vérifier le code et recevoir les tokens |
+| `POST` | `/v1/auth/google` | se connecter avec un Google ID Token |
+| `POST` | `/v1/auth/refresh` | renouveler et faire tourner les tokens |
+| `POST` | `/v1/auth/logout` | révoquer le refresh token |
+| `GET` | `/v1/users/me` | retourner l'utilisateur authentifié |
+
+L'émetteur d'emails est encore une interface : avant la production, il faut le
+relier à un service transactionnel (par exemple Brevo, Resend ou SMTP). En
+développement uniquement, `EXPOSE_DEV_OTP=true` renvoie le code dans la réponse.
+
+Plus de détails dans [BACKEND_SAAS.md](BACKEND_SAAS.md).
+
+## Facturation
+
+Le code métier passe exclusivement par `BillingService`, afin de ne pas lier le
+SaaS à Stripe ou à un autre prestataire. Le mode MVP prévoit la validation manuelle
+d'un paiement Orange Money/Moov Money avec référence de transaction et attribution
+idempotente.
+
+À ce stade, la facturation n'est pas exposée par des routes FastAPI et aucun
+webhook de prestataire automatique n'est activé. Consulte [BILLING.md](BILLING.md)
+pour ajouter un adaptateur PayDunya, Dodo Payments, Paddle ou un autre fournisseur.
+
+## Tests et migrations
+
+Exécuter la suite de CI localement :
+
+```bash
+pip install -r requirements-ci.txt
+python -B -m unittest discover -s tests -v
+python -m compileall -q api billing bot core db scheduler tests
+```
+
+Appliquer les migrations PostgreSQL :
+
+```bash
+alembic upgrade head
+```
+
+Le workflow CI exécute les tests, vérifie la syntaxe Python, applique Alembic sur
+un PostgreSQL éphémère et valide les fichiers Compose.
+
+## Déploiement en production
+
+Configure `BOT_DOMAIN` et `API_DOMAIN` dans le `.env` du VPS, puis lance :
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+```
+
+N'ajoute pas `docker-compose.override.yml` à cette commande : il expose les bases
+et monte le code local pour le développement. En production, Caddy expose
+uniquement les ports 80/443 et fournit HTTPS aux domaines du bot et de l'API.
+
+Le workflow **Deploy production** est déclenché manuellement depuis GitHub
+Actions. Les secrets VPS nécessaires et le fonctionnement du déploiement sont
+documentés dans [CI_CD.md](CI_CD.md).
+
+## Sécurité
+
+- ne commit jamais `.env`, les tokens ou `credentials/client_secret.json` ;
+- utilise des clés distinctes entre développement et production ;
+- garde PostgreSQL et Redis non exposés sur Internet ;
+- vérifie toujours le membership du workspace côté serveur ;
+- valide cryptographiquement les futurs webhooks de paiement ;
+- ne crédite jamais un paiement depuis une simple capture d'écran ;
+- sauvegarde PostgreSQL et les objets R2 avant chaque migration importante.
+
+## État du projet et prochaines étapes
+
+- [x] pipeline vidéo Telegram et programmation YouTube ;
+- [x] archivage Cloudflare R2 ;
+- [x] API FastAPI et modèle multi-tenant PostgreSQL ;
+- [x] authentification OTP/Google et sessions rotatives ;
+- [x] abstraction de facturation et paiement manuel ;
+- [x] Docker Compose, CI et déploiement VPS ;
+- [ ] fournisseur d'emails transactionnels ;
+- [ ] endpoints de facturation et premier adaptateur automatique ;
+- [ ] migration de la file vidéo vers PostgreSQL/Redis ;
+- [ ] API métier pour projets, vidéos, chaînes et programmations ;
+- [ ] frontend SaaS.
+
+## Documentation complémentaire
+
+- [Analyse initiale du code](ANALYSE_CODE.md)
+- [Architecture SaaS cible](ARCHITECTURE_SAAS.md)
+- [Backend SaaS](BACKEND_SAAS.md)
+- [Facturation](BILLING.md)
+- [CI/CD](CI_CD.md)
+
+## Licence et responsabilité
+
+Aucune licence n'est encore fournie dans le dépôt. Ajoute un fichier `LICENSE`
+avant de présenter officiellement le projet comme réutilisable en open source.
+
+Tu dois disposer des droits nécessaires sur les vidéos traitées et respecter les
+conditions d'utilisation des plateformes sources et de YouTube.
