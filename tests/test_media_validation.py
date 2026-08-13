@@ -44,18 +44,28 @@ class MediaValidationTests(unittest.TestCase):
                 scheduled_at=datetime.now(timezone.utc) + timedelta(hours=1),
             )
 
-    def test_unavailable_platform_is_rejected_before_queue(self):
-        with self.assertRaises(SocialPublisherError) as raised:
+    def test_instagram_reel_is_accepted(self):
+        validate_publication_preflight(
+            platform=ChannelPlatform.INSTAGRAM,
+            storage_key="rendered/clip.mp4",
+            duration_seconds=60,
+            title="Titre",
+            description=None,
+            visibility=PublicationVisibility.PUBLIC,
+            scheduled_at=None,
+        )
+
+    def test_instagram_reel_duration_is_bounded(self):
+        with self.assertRaisesRegex(SocialPublisherError, "15 minutes"):
             validate_publication_preflight(
                 platform=ChannelPlatform.INSTAGRAM,
                 storage_key="rendered/clip.mp4",
-                duration_seconds=60,
+                duration_seconds=901,
                 title="Titre",
                 description=None,
                 visibility=PublicationVisibility.PUBLIC,
                 scheduled_at=None,
             )
-        self.assertEqual(raised.exception.code, SocialErrorCode.AUTHORIZATION)
 
     def test_facebook_reel_duration_is_bounded(self):
         with self.assertRaisesRegex(SocialPublisherError, "3 et 60"):

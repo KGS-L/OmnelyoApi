@@ -67,6 +67,7 @@ class PublishRequest:
     description: str | None
     visibility: PublicationVisibility
     scheduled_at: datetime | None = None
+    media_url: str | None = None
 
 
 @dataclass(frozen=True)

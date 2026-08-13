@@ -138,7 +138,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 |---|---|---|---|
 | YouTube | Adaptateur SaaS ajouté | Configurer l'application OAuth et faire valider l'écran de consentement | 1 |
 | TikTok | Adaptateur sandbox ajouté | App et scope approuvés ; audit requis pour sortir de `SELF_ONLY` | 2 |
-| Instagram | Instagram API | Compte professionnel et permission de publication ; média accessible par URL ou upload repris | 3 |
+| Instagram | Adaptateur Reels ajouté | Compte professionnel, App Review Meta et média via URL R2 signée | 3 |
 | Facebook | Adaptateur Pages/Reels ajouté | App Review Meta et permissions avancées requises en production | 3 |
 
 ### Évolution du domaine
@@ -216,7 +216,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 - [x] Migrer YouTube vers le système générique de connexions.
 - [x] Livrer TikTok en environnement sandbox/non audité et préparer l'audit.
-- [ ] Livrer Instagram pour comptes professionnels.
+- [x] Livrer Instagram pour comptes professionnels.
 - [x] Livrer Facebook pour Pages.
 - [ ] Ajouter une matrice automatisée de validation des médias.
 - [ ] Ajouter polling et webhooks de statut lorsque les plateformes les proposent.

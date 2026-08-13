@@ -18,6 +18,7 @@ from api.integrations.social import (
 from api.integrations.youtube import YouTubePublisher
 from api.integrations.tiktok import TikTokPublisher
 from api.integrations.facebook import FacebookPublisher
+from api.integrations.instagram import InstagramPublisher
 from api.models import (
     Channel,
     ChannelPlatform,
@@ -73,6 +74,12 @@ def publish_video(job: Job, heartbeat) -> dict:
             settings.meta_app_secret,
             settings.meta_graph_api_version,
         ))
+    if not social_publishers.has(ChannelPlatform.INSTAGRAM):
+        social_publishers.register(InstagramPublisher(
+            settings.meta_app_id,
+            settings.meta_app_secret,
+            settings.meta_graph_api_version,
+        ))
     publisher = social_publishers.get(context.platform)
     work_dir = (
         config.TMP_DIR
@@ -91,12 +98,20 @@ def publish_video(job: Job, heartbeat) -> dict:
             _persist_credentials(
                 context.connection_id, credentials, settings.social_credentials_key
             )
+        media_url = None
+        if context.platform is ChannelPlatform.INSTAGRAM:
+            from core.storage_r2 import create_presigned_download_url
+
+            media_url = create_presigned_download_url(
+                context.storage_key, settings.r2_signed_url_ttl_seconds
+            )
         request = PublishRequest(
             media_path=media_path,
             title=context.title,
             description=context.description,
             visibility=context.visibility,
             scheduled_at=context.scheduled_at,
+            media_url=media_url,
         )
         publisher.validate_media(request)
         _require_lease(heartbeat, "avant l'envoi vers la plateforme")

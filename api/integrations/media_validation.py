@@ -43,6 +43,16 @@ def validate_publication_preflight(
         if visibility is not PublicationVisibility.PUBLIC:
             raise SocialPublisherError(SocialErrorCode.VALIDATION, "Un Reel Facebook doit viser la visibilité publique.")
         return
+    if platform is ChannelPlatform.INSTAGRAM:
+        if PurePosixPath(storage_key).suffix.lower() not in {".mp4", ".mov"}:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "Instagram attend un rendu MP4 ou MOV.")
+        if duration_seconds is None or not 3 <= duration_seconds <= 900:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "Un Reel Instagram doit durer entre 3 secondes et 15 minutes.")
+        if scheduled_at is not None:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "Instagram Reels ne prend pas en charge cette programmation différée.")
+        if visibility is not PublicationVisibility.PUBLIC:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "Un Reel Instagram doit viser la visibilité publique.")
+        return
     if platform is not ChannelPlatform.YOUTUBE:
         raise SocialPublisherError(
             SocialErrorCode.AUTHORIZATION,
