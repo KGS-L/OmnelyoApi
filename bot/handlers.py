@@ -65,11 +65,12 @@ WELCOME_UNLINKED = (
     "Create, schedule and publish content across YouTube, TikTok, Instagram "
     "and Facebook.\n\n"
     "🔐 <b>Connect your ShortPilot account to continue</b>\n\n"
-    "1. Sign in to the ShortPilot web app.\n"
+    f'1. <a href="{html.escape(config.WEB_APP_URL, quote=True)}">Open the ShortPilot web app</a> and sign in.\n'
     "2. Open <b>Settings → Integrations → Telegram</b>.\n"
     "3. Select <b>Connect Telegram</b>.\n"
     "4. Return here through the secure one-time link.\n\n"
-    "ShortPilot will never ask for your password or payment details in Telegram."
+    "ShortPilot will never ask for your password or payment details in Telegram.\n\n"
+    f'🌐 <a href="{html.escape(config.WEB_APP_URL, quote=True)}">{html.escape(config.WEB_APP_URL)}</a>'
 )
 
 WELCOME_LINKED = (

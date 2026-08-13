@@ -19,6 +19,10 @@ for _dir in [BASE_DIR / "credentials", BASE_DIR / "db", BASE_DIR / "storage" / "
 # --- Telegram ---
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
+WEB_APP_URL = (
+    os.getenv("WEB_APP_URL")
+    or os.getenv("FRONTEND_ORIGINS", "http://localhost:3000").split(",", 1)[0]
+).strip().rstrip("/")
 
 # --- YouTube ---
 YOUTUBE_CLIENT_SECRETS_FILE = BASE_DIR / os.getenv(
