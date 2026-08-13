@@ -49,6 +49,12 @@ class ChannelStatus(str, enum.Enum):
     REVOKED = "revoked"
 
 
+class SocialConnectionStatus(str, enum.Enum):
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    REVOKED = "revoked"
+
+
 class VideoStatus(str, enum.Enum):
     UPLOADED = "uploaded"
     QUEUED = "queued"
@@ -128,6 +134,9 @@ class Workspace(Base):
     slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     channels: Mapped[list["Channel"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
+    social_connections: Mapped[list["SocialConnection"]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
     videos: Mapped[list["Video"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     jobs: Mapped[list["Job"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     publications: Mapped[list["Publication"]] = relationship(
@@ -179,6 +188,50 @@ class TelegramConnection(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class SocialConnection(Base):
+    """Credentials OAuth chiffrés d'un fournisseur pour un workspace."""
+
+    __tablename__ = "social_connections"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "platform",
+            "provider_account_id",
+            name="uq_social_connections_workspace_provider_account",
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    platform: Mapped[ChannelPlatform] = mapped_column(
+        Enum(ChannelPlatform, name="channel_platform", create_type=False), index=True
+    )
+    provider_account_id: Mapped[str] = mapped_column(String(255))
+    access_token_encrypted: Mapped[str] = mapped_column(Text)
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text)
+    scopes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    status: Mapped[SocialConnectionStatus] = mapped_column(
+        Enum(SocialConnectionStatus, name="social_connection_status"),
+        default=SocialConnectionStatus.ACTIVE,
+        index=True,
+    )
+    provider_metadata: Mapped[dict | None] = mapped_column(JSON)
+    last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    workspace: Mapped[Workspace] = relationship(back_populates="social_connections")
+    channels: Mapped[list["Channel"]] = relationship(back_populates="connection")
+
+
 class Channel(Base):
     """Compte de diffusion connecté à un workspace."""
 
@@ -189,6 +242,9 @@ class Channel(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("social_connections.id", ondelete="SET NULL"), index=True
     )
     platform: Mapped[ChannelPlatform] = mapped_column(
         Enum(ChannelPlatform, name="channel_platform")
@@ -205,6 +261,7 @@ class Channel(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     workspace: Mapped[Workspace] = relationship(back_populates="channels")
+    connection: Mapped[SocialConnection | None] = relationship(back_populates="channels")
     publications: Mapped[list["Publication"]] = relationship(back_populates="channel")
 
 

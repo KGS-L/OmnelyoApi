@@ -2,11 +2,19 @@
 import unittest
 
 try:
-    from api.models import Base, ChannelPlatform, Job, Publication, TelegramConnection
+    from api.models import (
+        Base,
+        Channel,
+        ChannelPlatform,
+        Job,
+        Publication,
+        SocialConnection,
+        TelegramConnection,
+    )
 except ModuleNotFoundError as exc:
     if exc.name != "sqlalchemy":
         raise
-    Base = ChannelPlatform = Job = Publication = TelegramConnection = None
+    Base = Channel = ChannelPlatform = Job = Publication = SocialConnection = TelegramConnection = None
 
 
 @unittest.skipUnless(Base is not None, "SQLAlchemy n'est pas installé")
@@ -18,6 +26,16 @@ class ContentModelsTests(unittest.TestCase):
         self.assertEqual(
             {platform.value for platform in ChannelPlatform},
             {"youtube", "tiktok", "facebook", "instagram"},
+        )
+
+    def test_social_credentials_are_separate_from_channels(self):
+        table = SocialConnection.__table__
+        self.assertIn("access_token_encrypted", table.c)
+        self.assertIn("refresh_token_encrypted", table.c)
+        self.assertNotIn("access_token", Channel.__table__.c)
+        self.assertEqual(
+            next(iter(Channel.__table__.c.connection_id.foreign_keys)).target_fullname,
+            "social_connections.id",
         )
 
     def test_every_content_table_is_tenant_scoped(self):

@@ -145,10 +145,10 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 - [x] Étendre `ChannelPlatform` avec `TIKTOK`, `FACEBOOK` et `INSTAGRAM`.
 - [ ] Remplacer les champs YouTube spécifiques du pipeline par des identifiants externes génériques.
-- [ ] Ajouter un modèle `SocialConnection` ou `ProviderCredential` distinct de `Channel`.
-- [ ] Chiffrer access tokens et refresh tokens avec une clé extérieure à la base.
-- [ ] Stocker scopes, expiration, statut, date de dernière vérification et métadonnées minimales.
-- [ ] Ne jamais exposer les tokens dans les réponses API ou les logs.
+- [x] Ajouter un modèle `SocialConnection` ou `ProviderCredential` distinct de `Channel`.
+- [x] Chiffrer access tokens et refresh tokens avec une clé extérieure à la base.
+- [x] Stocker scopes, expiration, statut, date de dernière vérification et métadonnées minimales.
+- [x] Ne jamais exposer les tokens dans les réponses API ou les logs.
 - [ ] Ajouter une contrainte garantissant que vidéo, chaîne, job et publication appartiennent au même workspace.
 - [ ] Conserver une publication par destination, même lors d'une sélection multiple.
 
