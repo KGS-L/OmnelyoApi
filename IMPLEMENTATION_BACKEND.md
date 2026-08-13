@@ -149,7 +149,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] Chiffrer access tokens et refresh tokens avec une clé extérieure à la base.
 - [x] Stocker scopes, expiration, statut, date de dernière vérification et métadonnées minimales.
 - [x] Ne jamais exposer les tokens dans les réponses API ou les logs.
-- [ ] Ajouter une contrainte garantissant que vidéo, chaîne, job et publication appartiennent au même workspace.
+- [x] Ajouter une contrainte garantissant que vidéo, chaîne, job et publication appartiennent au même workspace.
 - [ ] Conserver une publication par destination, même lors d'une sélection multiple.
 
 ### Contrat commun des adaptateurs

@@ -240,6 +240,24 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
             _ensure_video_in_workspace(self.db, self.workspace_a.id, video.id)
         self.assertEqual(caught.exception.status_code, 404)
 
+    def test_database_rejects_job_video_from_another_workspace(self):
+        video = Video(
+            workspace_id=self.workspace_b.id,
+            source_url="https://example.com/foreign-job-source.mp4",
+        )
+        self.db.add(video)
+        self.db.flush()
+        with self.assertRaises(IntegrityError):
+            with self.db.begin_nested():
+                self.db.add(
+                    Job(
+                        workspace_id=self.workspace_a.id,
+                        video_id=video.id,
+                        type=JobType.PROCESS,
+                    )
+                )
+                self.db.flush()
+
     def test_publication_query_cannot_cross_workspace_boundary(self):
         video = Video(
             workspace_id=self.workspace_b.id,
@@ -283,6 +301,85 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
                 self.db, self.workspace_a.id, video.id, channel.id
             )
         self.assertEqual(caught.exception.status_code, 404)
+
+    def test_database_rejects_publication_graph_from_another_workspace(self):
+        video = Video(
+            workspace_id=self.workspace_a.id,
+            source_url="https://example.com/database-source-a.mp4",
+        )
+        channel = Channel(
+            workspace_id=self.workspace_b.id,
+            platform=ChannelPlatform.YOUTUBE,
+            external_id=f"youtube-db-{uuid.uuid4().hex}",
+            name="Chaîne étrangère DB",
+        )
+        foreign_job = Job(workspace_id=self.workspace_b.id, type=JobType.INGEST)
+        self.db.add_all([video, channel, foreign_job])
+        self.db.flush()
+        with self.assertRaises(IntegrityError):
+            with self.db.begin_nested():
+                self.db.add(
+                    Publication(
+                        workspace_id=self.workspace_a.id,
+                        video_id=video.id,
+                        channel_id=channel.id,
+                        job_id=foreign_job.id,
+                        title="Référence interdite",
+                    )
+                )
+                self.db.flush()
+
+    def test_database_rejects_clip_parent_from_another_workspace(self):
+        parent = Video(
+            workspace_id=self.workspace_b.id,
+            source_url="https://example.com/foreign-parent.mp4",
+        )
+        self.db.add(parent)
+        self.db.flush()
+        with self.assertRaises(IntegrityError):
+            with self.db.begin_nested():
+                self.db.add(
+                    Video(
+                        workspace_id=self.workspace_a.id,
+                        kind=VideoKind.CLIP,
+                        parent_video_id=parent.id,
+                        sequence_order=1,
+                        storage_key="clips/foreign-parent.mp4",
+                    )
+                )
+                self.db.flush()
+
+    def test_database_rejects_channel_connection_from_another_workspace(self):
+        cipher = SocialCredentialCipher(Fernet.generate_key().decode("ascii"))
+        connection, _ = persist_oauth_grant(
+            self.db,
+            PendingSocialOAuth(
+                user_id=self.user_b.id,
+                workspace_id=self.workspace_b.id,
+                platform=ChannelPlatform.FACEBOOK,
+            ),
+            OAuthGrant(
+                provider_account_id="foreign-meta-account",
+                access_token="foreign-access",
+                refresh_token=None,
+                scopes=[],
+                expires_at=None,
+                channels=[],
+            ),
+            cipher,
+        )
+        with self.assertRaises(IntegrityError):
+            with self.db.begin_nested():
+                self.db.add(
+                    Channel(
+                        workspace_id=self.workspace_a.id,
+                        connection_id=connection.id,
+                        platform=ChannelPlatform.FACEBOOK,
+                        external_id=f"foreign-page-{uuid.uuid4().hex}",
+                        name="Page étrangère",
+                    )
+                )
+                self.db.flush()
 
     def test_telegram_account_cannot_be_claimed_by_another_user(self):
         attach_telegram_account(
