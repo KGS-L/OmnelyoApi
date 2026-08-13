@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from api.auth.tokens import TokenService
 from api.config import APISettings, get_settings
 from api.database import get_db
-from api.models import User, WorkspaceMembership, WorkspaceRole
+from api.models import PlatformRole, User, WorkspaceMembership, WorkspaceRole
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -79,5 +79,19 @@ def require_workspace_roles(
         ],
     ) -> WorkspaceMembership:
         return ensure_workspace_role(membership, allowed_roles)
+
+    return dependency
+
+
+def require_platform_roles(*roles: PlatformRole) -> Callable[..., User]:
+    """Protège les opérations globales, indépendamment des rôles d'un workspace."""
+    allowed_roles = frozenset(roles)
+    if not allowed_roles:
+        raise ValueError("Au moins un rôle plateforme est requis.")
+
+    def dependency(user: Annotated[User, Depends(get_current_user)]) -> User:
+        if user.platform_role not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Permissions plateforme insuffisantes.")
+        return user
 
     return dependency

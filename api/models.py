@@ -34,6 +34,11 @@ class IdentityProvider(str, enum.Enum):
     TELEGRAM = "telegram"
 
 
+class PlatformRole(str, enum.Enum):
+    USER = "user"
+    ADMIN = "admin"
+
+
 class WorkspaceRole(str, enum.Enum):
     OWNER = "owner"
     ADMIN = "admin"
@@ -126,6 +131,12 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(String(2048))
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    platform_role: Mapped[PlatformRole] = mapped_column(
+        Enum(PlatformRole, name="platform_role", values_callable=_enum_values),
+        default=PlatformRole.USER,
+        server_default=PlatformRole.USER.value,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

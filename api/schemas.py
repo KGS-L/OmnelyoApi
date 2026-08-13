@@ -18,6 +18,8 @@ from api.models import (
     VideoStatus,
     VideoKind,
     WorkspaceRole,
+    PlatformRole,
+    PartnerStatus,
 )
 
 
@@ -56,6 +58,8 @@ class UserResponse(BaseModel):
     display_name: str | None
     avatar_url: str | None
     email_verified: bool
+    platform_role: PlatformRole
+    partner_status: PartnerStatus | None = None
 
 
 class WorkspaceResponse(BaseModel):
