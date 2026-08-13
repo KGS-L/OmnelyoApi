@@ -20,6 +20,8 @@ class APISettings(BaseSettings):
     otp_max_attempts: int = 5
     otp_request_limit_per_hour: int = 5
     google_web_client_id: str = ""
+    telegram_bot_username: str = ""
+    telegram_link_ttl_seconds: int = 600
     frontend_origins: str = "http://localhost:3000"
     expose_dev_otp: bool = False
 
@@ -33,6 +35,11 @@ class APISettings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.frontend_origins.split(",") if origin.strip()]
+
+    @field_validator("telegram_bot_username")
+    @classmethod
+    def normalize_bot_username(cls, value: str) -> str:
+        return value.strip().lstrip("@")
 
 
 @lru_cache

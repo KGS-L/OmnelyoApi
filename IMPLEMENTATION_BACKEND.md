@@ -109,18 +109,18 @@ Utilisateur web authentifié
 
 ### Implémentation et sécurité
 
-- [ ] Ajouter `TelegramConnection` avec `user_id`, `workspace_id`, `telegram_user_id`, `telegram_chat_id`, statut et dates.
-- [ ] Rendre `telegram_user_id` unique pour empêcher une liaison ambiguë.
-- [ ] Créer les jetons avec un générateur cryptographique et ne stocker que leur hash dans Redis.
-- [ ] Expiration de 10 minutes, usage unique et consommation atomique.
-- [ ] Ne jamais accepter directement un `user_id` ou `workspace_id` envoyé par Telegram.
-- [ ] Ajouter `POST /v1/integrations/telegram/link`.
-- [ ] Ajouter `GET /v1/integrations/telegram` et `DELETE /v1/integrations/telegram`.
-- [ ] Adapter `/start` du bot pour traiter le paramètre `link_<jeton>`.
+- [x] Ajouter `TelegramConnection` avec `user_id`, `workspace_id`, `telegram_user_id`, `telegram_chat_id`, statut et dates.
+- [x] Rendre `telegram_user_id` unique pour empêcher une liaison ambiguë.
+- [x] Créer les jetons avec un générateur cryptographique et ne stocker que leur hash dans Redis.
+- [x] Expiration de 10 minutes, usage unique et consommation atomique.
+- [x] Ne jamais accepter directement un `user_id` ou `workspace_id` envoyé par Telegram.
+- [x] Ajouter `POST /v1/workspaces/{workspace_id}/integrations/telegram/link`.
+- [x] Ajouter `GET` et `DELETE /v1/workspaces/{workspace_id}/integrations/telegram`.
+- [x] Adapter `/start` du bot pour traiter le paramètre `link_<jeton>`.
 - [ ] Notifier les deux côtés après liaison ou déconnexion.
 - [ ] Permettre à l'utilisateur de révoquer Telegram depuis le web et depuis le bot.
 - [ ] Faire créer tous les nouveaux jobs Telegram dans le même workspace PostgreSQL.
-- [ ] Tester rejeu, expiration, liaison concurrente et tentative de prise de contrôle.
+- [~] Tester rejeu, expiration et tentative de prise de contrôle ; test de concurrence Redis réel restant.
 
 Une option « utiliser mon propre bot Telegram » pourra être étudiée plus tard ;
 elle impose de stocker et faire tourner un token de bot par workspace et complexifie
@@ -192,7 +192,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 - [x] Écrire les schémas Pydantic de `Channel`, `Video`, `Job` et `Publication`.
 - [ ] Écrire repositories et services filtrés par workspace.
-- [~] Ajouter CRUD, pagination, filtres et réponses d'erreur cohérentes (ressources métier principales terminées ; pagination Channels à finaliser).
+- [x] Ajouter CRUD, pagination, filtres et réponses d'erreur cohérentes.
 - [ ] Ajouter upload vidéo par flux, limites de taille et validation MIME réelle.
 - [ ] Utiliser des clés R2 `workspaces/<workspace_id>/jobs/<job_id>/...`.
 - [ ] Ajouter URL signées, politiques de rétention et suppression.

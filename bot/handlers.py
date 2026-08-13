@@ -63,6 +63,9 @@ def _on_youtube_connected(user_id: int | None) -> None:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Affiche le message d'accueil et d'aide."""
+    if context.args and context.args[0].startswith("link_"):
+        await _link_web_account(update, context.args[0][5:])
+        return
     help_text = (
         "🤖 <b>ShortPilot</b>\n\n"
         "Je t'aide à créer et publier des shorts YouTube automatiquement.\n\n"
@@ -83,6 +86,49 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"Les dates utilisent le fuseau {config.TIMEZONE}."
     )
     await update.message.reply_text(help_text, parse_mode="HTML")
+
+
+async def _link_web_account(update: Update, token: str) -> None:
+    """Consomme le jeton web et associe le compte Telegram au workspace."""
+    if not token:
+        await update.message.reply_text("❌ Lien de connexion invalide.")
+        return
+
+    def attach():
+        from redis import Redis
+
+        from api.config import get_settings
+        from api.database import SessionLocal
+        from api.integrations.telegram import TelegramLinkService, attach_telegram_account
+
+        settings = get_settings()
+        pending = TelegramLinkService(
+            Redis.from_url(settings.redis_url), settings.telegram_link_ttl_seconds
+        ).consume(token)
+        if pending is None:
+            raise ValueError("Ce lien est invalide, expiré ou déjà utilisé.")
+        with SessionLocal() as db:
+            attach_telegram_account(
+                db,
+                pending,
+                telegram_user_id=update.effective_user.id,
+                telegram_chat_id=update.effective_chat.id,
+            )
+
+    try:
+        await asyncio.to_thread(attach)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {html.escape(str(exc))}", parse_mode="HTML")
+        return
+    except Exception:
+        logger.exception("Échec de liaison du compte Telegram au compte web")
+        await update.message.reply_text("❌ La connexion a échoué. Génère un nouveau lien.")
+        return
+    await update.message.reply_text(
+        "✅ <b>Telegram est maintenant connecté à ton compte ShortPilot.</b>\n\n"
+        "Tu peux revenir dans l'interface web.",
+        parse_mode="HTML",
+    )
 
 
 async def cmd_connect_youtube(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

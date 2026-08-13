@@ -2,7 +2,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -34,12 +34,16 @@ def list_channels(
         WorkspaceMembership, Depends(get_current_workspace_membership)
     ],
     db: Annotated[Session, Depends(get_db)],
+    channel_status: Annotated[ChannelStatus | None, Query(alias="status")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[Channel]:
+    query = select(Channel).where(Channel.workspace_id == workspace_id)
+    if channel_status is not None:
+        query = query.where(Channel.status == channel_status)
     return list(
         db.scalars(
-            select(Channel)
-            .where(Channel.workspace_id == workspace_id)
-            .order_by(Channel.created_at)
+            query.order_by(Channel.created_at.desc()).limit(limit).offset(offset)
         )
     )
 

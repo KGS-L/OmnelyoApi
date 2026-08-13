@@ -11,6 +11,7 @@ from api.models import (
     JobType,
     PublicationStatus,
     PublicationVisibility,
+    TelegramConnectionStatus,
     VideoStatus,
     WorkspaceRole,
 )
@@ -216,3 +217,19 @@ class PublicationResponse(BaseModel):
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class TelegramLinkResponse(BaseModel):
+    url: str
+    expires_in: int
+    instructions: list[str]
+
+
+class TelegramConnectionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    telegram_user_id: int
+    telegram_chat_id: int
+    status: TelegramConnectionStatus
+    linked_at: datetime
+    revoked_at: datetime | None

@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -83,6 +84,11 @@ class PublicationVisibility(str, enum.Enum):
     PUBLIC = "public"
 
 
+class TelegramConnectionStatus(str, enum.Enum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -139,6 +145,30 @@ class RefreshSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TelegramConnection(Base):
+    """Liaison vérifiée entre une identité web et un compte Telegram."""
+
+    __tablename__ = "telegram_connections"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "user_id", name="uq_telegram_connections_workspace_user"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    telegram_chat_id: Mapped[int] = mapped_column(BigInteger)
+    status: Mapped[TelegramConnectionStatus] = mapped_column(
+        Enum(TelegramConnectionStatus, name="telegram_connection_status"),
+        default=TelegramConnectionStatus.ACTIVE,
+    )
+    linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Channel(Base):

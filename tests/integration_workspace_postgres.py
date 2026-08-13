@@ -3,11 +3,12 @@ import unittest
 import uuid
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from api.config import get_settings
 from api.dependencies import get_current_workspace_membership
+from api.integrations.telegram import PendingTelegramLink, attach_telegram_account
 from api.models import (
     Channel,
     ChannelPlatform,
@@ -193,6 +194,44 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
                 self.db, self.workspace_a.id, video.id, channel.id
             )
         self.assertEqual(caught.exception.status_code, 404)
+
+    def test_telegram_account_cannot_be_claimed_by_another_user(self):
+        attach_telegram_account(
+            self.db,
+            PendingTelegramLink(
+                user_id=self.user_a.id, workspace_id=self.workspace_a.id
+            ),
+            telegram_user_id=123456789,
+            telegram_chat_id=123456789,
+        )
+        with self.assertRaises(ValueError):
+            attach_telegram_account(
+                self.db,
+                PendingTelegramLink(
+                    user_id=self.user_b.id, workspace_id=self.workspace_b.id
+                ),
+                telegram_user_id=123456789,
+                telegram_chat_id=123456789,
+            )
+
+    def test_expired_workspace_access_blocks_telegram_link(self):
+        membership = self.db.scalar(
+            select(WorkspaceMembership).where(
+                WorkspaceMembership.workspace_id == self.workspace_a.id,
+                WorkspaceMembership.user_id == self.user_a.id,
+            )
+        )
+        self.db.delete(membership)
+        self.db.flush()
+        with self.assertRaises(ValueError):
+            attach_telegram_account(
+                self.db,
+                PendingTelegramLink(
+                    user_id=self.user_a.id, workspace_id=self.workspace_a.id
+                ),
+                telegram_user_id=987654321,
+                telegram_chat_id=987654321,
+            )
 
 
 if __name__ == "__main__":

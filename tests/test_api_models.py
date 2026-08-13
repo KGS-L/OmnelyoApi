@@ -2,11 +2,11 @@
 import unittest
 
 try:
-    from api.models import Base, Job, Publication
+    from api.models import Base, Job, Publication, TelegramConnection
 except ModuleNotFoundError as exc:
     if exc.name != "sqlalchemy":
         raise
-    Base = Job = Publication = None
+    Base = Job = Publication = TelegramConnection = None
 
 
 @unittest.skipUnless(Base is not None, "SQLAlchemy n'est pas installé")
@@ -30,6 +30,11 @@ class ContentModelsTests(unittest.TestCase):
         self.assertEqual(foreign_keys["channel_id"], "channels.id")
         self.assertEqual(foreign_keys["job_id"], "jobs.id")
         self.assertTrue(Publication.__table__.c.job_id.nullable)
+
+    def test_telegram_connection_is_tenant_scoped_and_unique(self):
+        table = TelegramConnection.__table__
+        self.assertIn("workspace_id", table.c)
+        self.assertTrue(table.c.telegram_user_id.unique or table.c.telegram_user_id.index)
 
 
 if __name__ == "__main__":
