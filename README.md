@@ -18,6 +18,7 @@ sur YouTube (plusieurs shorts par jour, à horaires fixes).
 - 📅 Programmation automatique sur YouTube (2-3 publications/jour, créneaux configurables)
 - 🔐 Connexion YouTube en un clic depuis Telegram (OAuth2 via lien, aucune manipulation manuelle)
 - 🛎️ Notifications Telegram (résultat du découpage, confirmation de programmation, alertes en cas d'échec)
+- ♻️ File persistante : les travaux en attente survivent aux redémarrages
 - 🐳 Entièrement dockerisé, déployable sur n'importe quel VPS
 
 ## 🏗️ Architecture
@@ -190,6 +191,8 @@ autorise l'accès avec ton compte Google — la connexion se termine automatique
 | `TELEGRAM_UPLOAD_MAX_MB` | Taille maximale d'un Short reçu par Telegram (maximum technique : 20 Mo) |
 | `UPLOADED_SHORT_MAX_DURATION_SEC` | Durée maximale d'un Short importé (maximum YouTube : 180 s) |
 | `MANUAL_SCHEDULE_MIN_LEAD_MINUTES` | Délai minimal avant une programmation manuelle |
+| `JOB_WORKER_CONCURRENCY` | Nombre maximal de vidéos traitées simultanément (défaut recommandé : 1) |
+| `JOB_MAX_ATTEMPTS` | Nombre maximal de prises en charge après interruption |
 
 ## 💬 Commandes du bot
 
@@ -197,6 +200,8 @@ autorise l'accès avec ton compte Google — la connexion se termine automatique
 |---|---|
 | `/connect_youtube` | Connecte (ou reconnecte) une chaîne YouTube |
 | `/status` | Affiche l'état des vidéos en cours de traitement / programmées |
+| `/queue` | Affiche les dix derniers traitements et leur état |
+| `/cancel ID` | Annule un traitement qui n'a pas encore commencé |
 | *(lien vidéo)* | Soumet une nouvelle vidéo source pour découpage et programmation |
 | *(fichier vidéo)* | Programme un Short personnel, automatiquement ou à une date choisie |
 
@@ -222,6 +227,18 @@ ou, pour imposer une date dans le fuseau `TIMEZONE` :
 Pour programmer plusieurs Shorts, envoie chaque vidéo séparément avec sa propre
 légende. Le bot refuse les collisions de créneaux et applique `MAX_CLIPS_PER_DAY`
 par utilisateur.
+
+### File de traitements
+
+Chaque lien ou fichier reçoit un identifiant, par exemple `#12`. `/queue` affiche
+les états `queued`, `running`, `completed`, `failed` ou `cancelled`. La commande
+`/cancel 12` fonctionne tant que le job est encore `queued`. Un job déjà lancé ne
+peut pas être interrompu brutalement, afin d'éviter un fichier ou un upload YouTube
+partiellement créé.
+
+Au démarrage, les jobs marqués `running` lors d'un arrêt précédent sont remis en
+attente s'ils n'ont pas dépassé `JOB_MAX_ATTEMPTS`. La concurrence vaut 1 par
+défaut pour éviter que plusieurs encodages ffmpeg saturent le serveur.
 
 ## 🐳 Docker
 

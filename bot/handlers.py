@@ -13,6 +13,7 @@ import config
 from bot import oauth_server
 from core import youtube_auth
 from scheduler import scheduler
+from scheduler import job_queue
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "<b>Commandes disponibles :</b>\n"
         "• /connect_youtube — Connecter ta chaîne YouTube\n"
         "• /status — Vérifier l'état de la connexion\n"
+        "• /queue — Voir tes traitements\n"
+        "• /cancel ID — Annuler un traitement en attente\n"
         "• /disconnect — Déconnecter YouTube\n"
         "• /help — Afficher ce message\n\n"
         "<b>Créer depuis un lien :</b> envoie une URL YouTube/TikTok/etc.\n\n"
@@ -133,6 +136,45 @@ async def cmd_disconnect(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("ℹ️ Aucune connexion YouTube active à déconnecter.")
 
 
+async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Affiche les derniers jobs de l'utilisateur."""
+    jobs = job_queue.list_user_jobs(update.effective_user.id)
+    if not jobs:
+        await update.message.reply_text("📭 Ta file de traitements est vide.")
+        return
+    icons = {
+        "queued": "⏳",
+        "running": "⚙️",
+        "completed": "✅",
+        "failed": "❌",
+        "cancelled": "🚫",
+    }
+    labels = {"process_url": "lien", "publish_upload": "Short importé"}
+    lines = ["📋 <b>Tes derniers traitements</b>"]
+    for job in jobs:
+        title = html.escape(job["requested_title"] or labels.get(job["job_type"], "vidéo"))
+        lines.append(
+            f"{icons.get(job['status'], '•')} <code>#{job['id']}</code> "
+            f"{title} — {job['status']}"
+        )
+    lines.append("\nAnnulation : <code>/cancel ID</code> (job en attente uniquement).")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Annule un job appartenant à l'utilisateur s'il n'a pas commencé."""
+    if not context.args or not context.args[0].lstrip("#").isdigit():
+        await update.message.reply_text("Utilisation : /cancel ID — exemple : /cancel 12")
+        return
+    job_id = int(context.args[0].lstrip("#"))
+    if job_queue.cancel_job(job_id, update.effective_user.id):
+        await update.message.reply_text(f"🚫 Traitement #{job_id} annulé.")
+    else:
+        await update.message.reply_text(
+            "Impossible d'annuler : job introuvable, déjà lancé ou ne t'appartenant pas."
+        )
+
+
 # =============================================================================
 # TRAITEMENT DU LIEN VIDÉO
 # =============================================================================
@@ -169,15 +211,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     (user_id, chat_id, text, "pending")
                 )
                 source_video_id = cursor.lastrowid
+                job_id = job_queue.enqueue_job(source_video_id, "process_url", conn=conn)
                 conn.commit()
         except Exception as e:
             logger.exception("Erreur lors de l'insertion en DB")
             await update.message.reply_text(f"❌ Erreur de base de données : {e}")
             return
 
-        # Lancer le pipeline en tâche de fond (dans l'exécuteur de thread pour ne pas bloquer le bot)
-        loop = asyncio.get_running_loop()
-        loop.run_in_executor(None, scheduler.process_source_video, source_video_id)
+        await update.message.reply_text(f"📋 Traitement ajouté à la file : #{job_id}")
         
     else:
         await update.message.reply_text(
@@ -251,6 +292,7 @@ async def handle_video_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
                 ),
             )
             source_video_id = cursor.lastrowid
+            job_id = job_queue.enqueue_job(source_video_id, "publish_upload", conn=conn)
             conn.commit()
     except Exception as exc:
         destination.unlink(missing_ok=True)
@@ -266,10 +308,8 @@ async def handle_video_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
     await message.reply_text(
         f"✅ Short accepté ({width}×{height}, {duration:.1f}s).\n"
         f"📅 Publication : {schedule_label}\n"
-        f"🎬 Titre : {upload_request.title}"
-    )
-    asyncio.get_running_loop().run_in_executor(
-        None, scheduler.process_uploaded_short, source_video_id
+        f"🎬 Titre : {upload_request.title}\n"
+        f"📋 Traitement : #{job_id}"
     )
 
 
@@ -289,6 +329,8 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("help", cmd_start))
     app.add_handler(CommandHandler("connect_youtube", cmd_connect_youtube))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("queue", cmd_queue))
+    app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("disconnect", cmd_disconnect))
     app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_upload))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

@@ -85,6 +85,11 @@ MANUAL_SCHEDULE_MIN_LEAD_MINUTES = int(
     os.getenv("MANUAL_SCHEDULE_MIN_LEAD_MINUTES", 15)
 )
 
+# --- File de traitements persistante ---
+JOB_WORKER_CONCURRENCY = max(1, int(os.getenv("JOB_WORKER_CONCURRENCY", 1)))
+JOB_POLL_INTERVAL_SEC = max(0.5, float(os.getenv("JOB_POLL_INTERVAL_SEC", 2)))
+JOB_MAX_ATTEMPTS = max(1, int(os.getenv("JOB_MAX_ATTEMPTS", 2)))
+
 # --- DB ---
 DATABASE_PATH = BASE_DIR / os.getenv("DATABASE_PATH", "db/robot_short_yt.sqlite3")
 

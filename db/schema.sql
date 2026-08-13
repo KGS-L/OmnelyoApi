@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS source_videos (
     local_path TEXT,
     submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
     status TEXT NOT NULL DEFAULT 'pending',
-        -- pending | downloading | cutting | publishing | done | partial | failed
+        -- pending | downloading | cutting | publishing | done | partial | failed | cancelled
     error_message TEXT
 );
 
@@ -50,6 +50,23 @@ CREATE TABLE IF NOT EXISTS notifications_log (
     sent_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- File persistante : un redémarrage ne perd pas les traitements en attente.
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_video_id INTEGER NOT NULL REFERENCES source_videos(id),
+    job_type TEXT NOT NULL,                 -- process_url | publish_upload
+    status TEXT NOT NULL DEFAULT 'queued', -- queued | running | completed | failed | cancelled
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 2,
+    error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    started_at TEXT,
+    finished_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_clips_status ON clips(status);
 CREATE INDEX IF NOT EXISTS idx_clips_scheduled ON clips(scheduled_publish_at);
 CREATE INDEX IF NOT EXISTS idx_clips_source ON clips(source_video_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_status_created ON jobs(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_source ON jobs(source_video_id);

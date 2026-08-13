@@ -32,6 +32,9 @@ def main() -> None:
     
     # Initialisation base de données
     init_db()
+
+    from scheduler.job_queue import start_worker, stop_worker
+    start_worker()
     
     # Démarrage serveur OAuth en arrière-plan
     start_oauth_server()
@@ -42,7 +45,10 @@ def main() -> None:
     start_scheduler()
     
     # Lancer le bot Telegram (bloquant, en dernier)
-    start_bot()
+    try:
+        start_bot()
+    finally:
+        stop_worker()
 
 
 if __name__ == "__main__":
