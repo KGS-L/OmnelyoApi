@@ -38,6 +38,9 @@ class WorkspaceRole(str, enum.Enum):
 
 class ChannelPlatform(str, enum.Enum):
     YOUTUBE = "youtube"
+    TIKTOK = "tiktok"
+    FACEBOOK = "facebook"
+    INSTAGRAM = "instagram"
 
 
 class ChannelStatus(str, enum.Enum):

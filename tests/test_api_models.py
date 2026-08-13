@@ -2,17 +2,23 @@
 import unittest
 
 try:
-    from api.models import Base, Job, Publication, TelegramConnection
+    from api.models import Base, ChannelPlatform, Job, Publication, TelegramConnection
 except ModuleNotFoundError as exc:
     if exc.name != "sqlalchemy":
         raise
-    Base = Job = Publication = TelegramConnection = None
+    Base = ChannelPlatform = Job = Publication = TelegramConnection = None
 
 
 @unittest.skipUnless(Base is not None, "SQLAlchemy n'est pas installé")
 class ContentModelsTests(unittest.TestCase):
     def test_content_tables_are_registered(self):
         self.assertTrue({"channels", "videos", "jobs", "publications"}.issubset(Base.metadata.tables))
+
+    def test_channel_supports_all_requested_social_platforms(self):
+        self.assertEqual(
+            {platform.value for platform in ChannelPlatform},
+            {"youtube", "tiktok", "facebook", "instagram"},
+        )
 
     def test_every_content_table_is_tenant_scoped(self):
         for table_name in ("channels", "videos", "jobs", "publications"):

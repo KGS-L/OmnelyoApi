@@ -143,7 +143,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 ### Évolution du domaine
 
-- [ ] Étendre `ChannelPlatform` avec `TIKTOK`, `FACEBOOK` et `INSTAGRAM`.
+- [x] Étendre `ChannelPlatform` avec `TIKTOK`, `FACEBOOK` et `INSTAGRAM`.
 - [ ] Remplacer les champs YouTube spécifiques du pipeline par des identifiants externes génériques.
 - [ ] Ajouter un modèle `SocialConnection` ou `ProviderCredential` distinct de `Channel`.
 - [ ] Chiffrer access tokens et refresh tokens avec une clé extérieure à la base.
@@ -154,11 +154,11 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 ### Contrat commun des adaptateurs
 
-- [ ] Définir `SocialPublisher.connect()` et le callback OAuth.
-- [ ] Définir `list_channels()` pour laisser l'utilisateur choisir le compte ou la Page.
-- [ ] Définir `validate_media()` avec les limites propres à chaque plateforme.
-- [ ] Définir `publish()`, `get_status()`, `cancel()` et `refresh_credentials()`.
-- [ ] Normaliser les erreurs : autorisation, validation, quota, modération, réseau et erreur temporaire.
+- [~] Définir `SocialPublisher.connect()` et le callback OAuth (contrat ajouté ; routes OAuth restantes).
+- [x] Définir `list_channels()` pour laisser l'utilisateur choisir le compte ou la Page.
+- [x] Définir `validate_media()` avec les limites propres à chaque plateforme.
+- [x] Définir `publish()`, `get_status()`, `cancel()` et `refresh_credentials()`.
+- [x] Normaliser les erreurs : autorisation, validation, quota, modération, réseau et erreur temporaire.
 - [ ] Préserver les réponses brutes utiles dans un champ JSON interne, sans secret.
 
 ### Expérience de création d'une publication
