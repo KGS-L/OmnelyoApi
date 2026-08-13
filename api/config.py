@@ -23,6 +23,8 @@ class APISettings(BaseSettings):
     telegram_bot_username: str = ""
     telegram_link_ttl_seconds: int = 600
     social_credentials_key: str = ""
+    social_oauth_callback_base_url: str = ""
+    social_oauth_state_ttl_seconds: int = 600
     worker_poll_interval_seconds: float = 2.0
     worker_stale_after_seconds: int = 300
     worker_heartbeat_interval_seconds: int = 30

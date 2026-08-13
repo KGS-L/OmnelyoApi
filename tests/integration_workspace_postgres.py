@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
+from cryptography.fernet import Fernet
 from sqlalchemy import create_engine, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -16,6 +17,8 @@ from api.integrations.telegram import (
     get_active_telegram_connection,
     revoke_telegram_account,
 )
+from api.integrations.social import OAuthGrant, SocialChannel
+from api.integrations.social_oauth import PendingSocialOAuth, persist_oauth_grant
 from api.models import (
     Channel,
     ChannelPlatform,
@@ -34,6 +37,7 @@ from api.routes.channels import _get_channel
 from api.routes.jobs import _ensure_video_in_workspace, _get_job
 from api.routes.publications import _ensure_targets_in_workspace, _get_publication
 from api.routes.videos import _get_video, delete_video
+from api.security.social_credentials import SocialCredentialCipher
 from workers.job_state import (
     claim_next_job,
     complete_job,
@@ -109,6 +113,31 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as caught:
             _get_channel(self.db, self.workspace_a.id, channel.id)
         self.assertEqual(caught.exception.status_code, 404)
+
+    def test_oauth_grant_is_encrypted_and_creates_workspace_channel(self):
+        cipher = SocialCredentialCipher(Fernet.generate_key().decode("ascii"))
+        connection, channels = persist_oauth_grant(
+            self.db,
+            PendingSocialOAuth(
+                user_id=self.user_a.id,
+                workspace_id=self.workspace_a.id,
+                platform=ChannelPlatform.INSTAGRAM,
+            ),
+            OAuthGrant(
+                provider_account_id="meta-account",
+                access_token="access-secret",
+                refresh_token="refresh-secret",
+                scopes=["content_publish", "content_publish"],
+                expires_at=None,
+                channels=[SocialChannel(external_id="ig-account", name="Compte IG")],
+            ),
+            cipher,
+        )
+        self.assertNotIn("access-secret", connection.access_token_encrypted)
+        self.assertEqual(cipher.decrypt(connection.access_token_encrypted), "access-secret")
+        self.assertEqual(connection.scopes, ["content_publish"])
+        self.assertEqual(channels[0].workspace_id, self.workspace_a.id)
+        self.assertEqual(channels[0].connection_id, connection.id)
 
     def test_video_query_cannot_cross_workspace_boundary(self):
         video = Video(

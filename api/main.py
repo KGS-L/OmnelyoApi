@@ -8,6 +8,7 @@ from api.routes import (
     channels,
     jobs,
     publications,
+    social_integrations,
     telegram_integration,
     users,
     videos,
@@ -30,6 +31,8 @@ app.include_router(channels.router, prefix="/v1")
 app.include_router(videos.router, prefix="/v1")
 app.include_router(jobs.router, prefix="/v1")
 app.include_router(publications.router, prefix="/v1")
+app.include_router(social_integrations.workspace_router, prefix="/v1")
+app.include_router(social_integrations.callback_router, prefix="/v1")
 app.include_router(telegram_integration.router, prefix="/v1")
 
 

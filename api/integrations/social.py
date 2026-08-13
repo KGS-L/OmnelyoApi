@@ -42,6 +42,17 @@ class SocialChannel:
 
 
 @dataclass(frozen=True)
+class OAuthGrant:
+    provider_account_id: str
+    access_token: str
+    refresh_token: str | None
+    scopes: list[str]
+    expires_at: datetime | None
+    channels: list[SocialChannel]
+    provider_metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class PublishRequest:
     media_path: Path
     title: str
@@ -66,6 +77,10 @@ class SocialPublisher(ABC):
     @abstractmethod
     def connect(self, state: str, redirect_uri: str) -> str:
         """Retourne l'URL OAuth du fournisseur."""
+
+    @abstractmethod
+    def exchange_code(self, code: str, redirect_uri: str) -> OAuthGrant:
+        """Échange le code temporaire et retourne des données normalisées."""
 
     @abstractmethod
     def list_channels(self) -> list[SocialChannel]:
@@ -109,3 +124,6 @@ class SocialPublisherRegistry:
                 SocialErrorCode.AUTHORIZATION,
                 f"La plateforme {platform.value} n'est pas encore connectée.",
             ) from exc
+
+
+social_publishers = SocialPublisherRegistry()

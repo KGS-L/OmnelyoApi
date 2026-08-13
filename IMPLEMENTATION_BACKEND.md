@@ -154,7 +154,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 ### Contrat commun des adaptateurs
 
-- [~] Définir `SocialPublisher.connect()` et le callback OAuth (contrat ajouté ; routes OAuth restantes).
+- [x] Définir `SocialPublisher.connect()` et le callback OAuth.
 - [x] Définir `list_channels()` pour laisser l'utilisateur choisir le compte ou la Page.
 - [x] Définir `validate_media()` avec les limites propres à chaque plateforme.
 - [x] Définir `publish()`, `get_status()`, `cancel()` et `refresh_credentials()`.

@@ -11,6 +11,7 @@ from api.models import (
     JobType,
     PublicationStatus,
     PublicationVisibility,
+    SocialConnectionStatus,
     TelegramConnectionStatus,
     VideoStatus,
     VideoKind,
@@ -94,6 +95,32 @@ class ChannelResponse(BaseModel):
     status: ChannelStatus
     created_at: datetime
     updated_at: datetime
+
+
+class SocialOAuthStartResponse(BaseModel):
+    authorization_url: str
+    expires_in: int
+
+
+class SocialConnectionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    platform: ChannelPlatform
+    provider_account_id: str
+    scopes: list[str]
+    expires_at: datetime | None
+    status: SocialConnectionStatus
+    last_verified_at: datetime | None
+    revoked_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SocialOAuthCallbackResponse(BaseModel):
+    connection: SocialConnectionResponse
+    channels: list[ChannelResponse]
 
 
 class VideoCreate(BaseModel):
