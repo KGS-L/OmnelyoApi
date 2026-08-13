@@ -218,7 +218,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] Livrer TikTok en environnement sandbox/non audité et préparer l'audit.
 - [x] Livrer Instagram pour comptes professionnels.
 - [x] Livrer Facebook pour Pages.
-- [ ] Ajouter une matrice automatisée de validation des médias.
+- [x] Ajouter une matrice automatisée de validation des médias.
 - [ ] Ajouter polling et webhooks de statut lorsque les plateformes les proposent.
 
 ### Phase 6 — Business model et paiement
