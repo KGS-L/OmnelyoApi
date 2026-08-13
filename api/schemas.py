@@ -9,6 +9,8 @@ from api.models import (
     ChannelStatus,
     JobStatus,
     JobType,
+    PublicationStatus,
+    PublicationVisibility,
     VideoStatus,
     WorkspaceRole,
 )
@@ -163,4 +165,54 @@ class JobResponse(BaseModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    updated_at: datetime
+
+
+class PublicationCreate(BaseModel):
+    video_id: uuid.UUID
+    channel_id: uuid.UUID
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    visibility: PublicationVisibility = PublicationVisibility.PRIVATE
+    scheduled_at: datetime | None = None
+
+    @field_validator("scheduled_at")
+    @classmethod
+    def require_scheduled_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("La date de publication doit contenir un fuseau horaire.")
+        return value
+
+
+class PublicationUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    visibility: PublicationVisibility | None = None
+    scheduled_at: datetime | None = None
+
+    @field_validator("scheduled_at")
+    @classmethod
+    def require_scheduled_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("La date de publication doit contenir un fuseau horaire.")
+        return value
+
+
+class PublicationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    video_id: uuid.UUID
+    channel_id: uuid.UUID
+    job_id: uuid.UUID | None
+    external_id: str | None
+    title: str
+    description: str | None
+    visibility: PublicationVisibility
+    status: PublicationStatus
+    scheduled_at: datetime | None
+    published_at: datetime | None
+    error_message: str | None
+    created_at: datetime
     updated_at: datetime

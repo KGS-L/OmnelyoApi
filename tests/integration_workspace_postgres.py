@@ -13,6 +13,7 @@ from api.models import (
     ChannelPlatform,
     Job,
     JobType,
+    Publication,
     User,
     Workspace,
     WorkspaceMembership,
@@ -21,6 +22,7 @@ from api.models import (
 )
 from api.routes.channels import _get_channel
 from api.routes.jobs import _ensure_video_in_workspace, _get_job
+from api.routes.publications import _ensure_targets_in_workspace, _get_publication
 from api.routes.videos import _get_video, delete_video
 
 
@@ -146,6 +148,50 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
         self.db.flush()
         with self.assertRaises(HTTPException) as caught:
             _ensure_video_in_workspace(self.db, self.workspace_a.id, video.id)
+        self.assertEqual(caught.exception.status_code, 404)
+
+    def test_publication_query_cannot_cross_workspace_boundary(self):
+        video = Video(
+            workspace_id=self.workspace_b.id,
+            source_url="https://example.com/published-source.mp4",
+        )
+        channel = Channel(
+            workspace_id=self.workspace_b.id,
+            platform=ChannelPlatform.YOUTUBE,
+            external_id=f"youtube-{uuid.uuid4().hex}",
+            name="Chaîne publication B",
+        )
+        self.db.add_all([video, channel])
+        self.db.flush()
+        publication = Publication(
+            workspace_id=self.workspace_b.id,
+            video_id=video.id,
+            channel_id=channel.id,
+            title="Publication B",
+        )
+        self.db.add(publication)
+        self.db.flush()
+        with self.assertRaises(HTTPException) as caught:
+            _get_publication(self.db, self.workspace_a.id, publication.id)
+        self.assertEqual(caught.exception.status_code, 404)
+
+    def test_publication_targets_must_share_workspace(self):
+        video = Video(
+            workspace_id=self.workspace_a.id,
+            source_url="https://example.com/source-a.mp4",
+        )
+        channel = Channel(
+            workspace_id=self.workspace_b.id,
+            platform=ChannelPlatform.YOUTUBE,
+            external_id=f"youtube-{uuid.uuid4().hex}",
+            name="Chaîne étrangère",
+        )
+        self.db.add_all([video, channel])
+        self.db.flush()
+        with self.assertRaises(HTTPException) as caught:
+            _ensure_targets_in_workspace(
+                self.db, self.workspace_a.id, video.id, channel.id
+            )
         self.assertEqual(caught.exception.status_code, 404)
 
 
