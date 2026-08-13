@@ -219,7 +219,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] Livrer Instagram pour comptes professionnels.
 - [x] Livrer Facebook pour Pages.
 - [x] Ajouter une matrice automatisée de validation des médias.
-- [ ] Ajouter polling et webhooks de statut lorsque les plateformes les proposent.
+- [~] Ajouter polling et webhooks de statut lorsque les plateformes les proposent (polling fournisseur et réconciliation terminés ; webhooks restants).
 
 ### Phase 6 — Business model et paiement
 

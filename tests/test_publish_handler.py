@@ -2,11 +2,19 @@
 import unittest
 import uuid
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from api.integrations.social import PublisherCredentials
-from api.models import JobType
-from workers.handlers.publish import _needs_refresh, _result
-from workers.registry import registry
+from api.models import JobType, PublicationStatus
+from workers.handlers.publish import (
+    FAILED_PROVIDER_STATUSES,
+    PUBLISHED_PROVIDER_STATUSES,
+    _needs_refresh,
+    _persist_reconciliation,
+    _result,
+)
+from workers.registry import JobDeferred, registry
 
 
 class PublishHandlerTests(unittest.TestCase):
@@ -31,6 +39,61 @@ class PublishHandlerTests(unittest.TestCase):
         self.assertEqual(
             _result(publication_id, "youtube-id"),
             {"publication_id": str(publication_id), "external_id": "youtube-id"},
+        )
+
+    def test_provider_statuses_have_distinct_terminal_groups(self):
+        self.assertIn("publish_complete", PUBLISHED_PROVIDER_STATUSES)
+        self.assertIn("ready", PUBLISHED_PROVIDER_STATUSES)
+        self.assertIn("failed", FAILED_PROVIDER_STATUSES)
+        self.assertTrue(PUBLISHED_PROVIDER_STATUSES.isdisjoint(FAILED_PROVIDER_STATUSES))
+
+    def test_deferred_job_exposes_polling_delay(self):
+        deferred = JobDeferred("Traitement en cours", delay_seconds=45)
+        self.assertEqual(deferred.delay_seconds, 45)
+        self.assertEqual(str(deferred), "Traitement en cours")
+
+    def test_reconciliation_marks_completed_provider_publication(self):
+        publication = SimpleNamespace(
+            provider_response=None,
+            status=PublicationStatus.PUBLISHING,
+            published_at=None,
+            error_message="ancienne erreur",
+        )
+        db = MagicMock()
+        db.get.return_value = publication
+        session = MagicMock()
+        session.__enter__.return_value = db
+        context = SimpleNamespace(
+            publication_id=uuid.uuid4(), external_id=None,
+            existing_external_id="provider-id",
+        )
+        with patch("workers.handlers.publish.SessionLocal", return_value=session):
+            result = _persist_reconciliation(context, "PUBLISH_COMPLETE")
+        self.assertEqual(publication.status, PublicationStatus.PUBLISHED)
+        self.assertIsNotNone(publication.published_at)
+        self.assertEqual(result["external_id"], "provider-id")
+        db.commit.assert_called_once()
+
+    def test_reconciliation_defers_non_terminal_provider_status(self):
+        publication = SimpleNamespace(
+            provider_response={},
+            status=PublicationStatus.PUBLISHING,
+            published_at=None,
+            error_message=None,
+        )
+        db = MagicMock()
+        db.get.return_value = publication
+        session = MagicMock()
+        session.__enter__.return_value = db
+        context = SimpleNamespace(
+            publication_id=uuid.uuid4(), existing_external_id="provider-id",
+        )
+        with patch("workers.handlers.publish.SessionLocal", return_value=session):
+            with self.assertRaises(JobDeferred):
+                _persist_reconciliation(context, "PROCESSING_UPLOAD")
+        self.assertEqual(publication.status, PublicationStatus.PUBLISHING)
+        self.assertEqual(
+            publication.provider_response["reconciled_status"], "PROCESSING_UPLOAD"
         )
 
 

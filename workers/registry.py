@@ -7,6 +7,14 @@ from api.models import Job, JobType
 JobHandler = Callable[[Job, Callable[[], bool]], dict[str, Any] | None]
 
 
+class JobDeferred(Exception):
+    """Demande au runner de remettre un job en attente sans compter un échec."""
+
+    def __init__(self, reason: str, delay_seconds: int = 30):
+        super().__init__(reason)
+        self.delay_seconds = delay_seconds
+
+
 class HandlerRegistry:
     def __init__(self) -> None:
         self._handlers: dict[JobType, JobHandler] = {}

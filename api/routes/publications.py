@@ -274,6 +274,7 @@ def enqueue_batch_publication_records(
             workspace_id=workspace_id,
             video_id=publication.video_id,
             type=JobType.PUBLISH,
+            max_attempts=10,
             payload={"publication_id": str(publication.id)},
         )
         db.add(job)

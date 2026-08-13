@@ -33,7 +33,14 @@ from api.models import (
     Video,
 )
 from api.security.social_credentials import SocialCredentialCipher
-from workers.registry import registry
+from workers.registry import JobDeferred, registry
+
+PUBLISHED_PROVIDER_STATUSES = frozenset({
+    "published", "publish_complete", "public", "private", "unlisted", "ready",
+})
+FAILED_PROVIDER_STATUSES = frozenset({
+    "failed", "error", "expired", "not_found", "rejected",
+})
 
 
 @dataclass(frozen=True)
@@ -55,9 +62,67 @@ def publish_video(job: Job, heartbeat) -> dict:
     import config
 
     context = _load_context(job)
-    if context.existing_external_id:
-        return _result(context.publication_id, context.existing_external_id)
     settings = get_settings()
+    _register_publishers(settings)
+    publisher = social_publishers.get(context.platform)
+    credentials = _load_credentials(context.connection_id, settings.social_credentials_key)
+    if _needs_refresh(credentials):
+        credentials = publisher.refresh_credentials(credentials)
+        _persist_credentials(
+            context.connection_id, credentials, settings.social_credentials_key
+        )
+    if context.existing_external_id:
+        _require_lease(heartbeat, "avant la vérification fournisseur")
+        provider_status = publisher.get_status(
+            credentials, context.existing_external_id
+        )
+        return _persist_reconciliation(context, provider_status)
+
+    work_dir = (
+        config.TMP_DIR
+        / "workspaces"
+        / str(job.workspace_id)
+        / "jobs"
+        / str(job.id)
+    )
+    media_path = work_dir / "publish" / Path(context.storage_key).name
+    try:
+        _require_lease(heartbeat, "avant le téléchargement du rendu")
+        download_from_r2(context.storage_key, media_path)
+        media_url = None
+        if context.platform is ChannelPlatform.INSTAGRAM:
+            from core.storage_r2 import create_presigned_download_url
+
+            media_url = create_presigned_download_url(
+                context.storage_key, settings.r2_signed_url_ttl_seconds
+            )
+        request = PublishRequest(
+            media_path=media_path,
+            title=context.title,
+            description=context.description,
+            visibility=context.visibility,
+            scheduled_at=context.scheduled_at,
+            media_url=media_url,
+        )
+        publisher.validate_media(request)
+        _require_lease(heartbeat, "avant l'envoi vers la plateforme")
+        result = publisher.publish(
+            credentials, context.channel_external_id, request
+        )
+        persisted = _persist_result(context, result)
+        if result.status.lower() in {"processing", "pending", "in_progress"}:
+            raise JobDeferred("Publication en cours de traitement chez le fournisseur.")
+        return persisted
+    except JobDeferred:
+        raise
+    except Exception as exc:
+        _persist_failure(context.publication_id, exc)
+        raise
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def _register_publishers(settings) -> None:
     if not social_publishers.has(ChannelPlatform.YOUTUBE):
         social_publishers.register(
             YouTubePublisher(settings.youtube_client_secrets_file)
@@ -80,50 +145,6 @@ def publish_video(job: Job, heartbeat) -> dict:
             settings.meta_app_secret,
             settings.meta_graph_api_version,
         ))
-    publisher = social_publishers.get(context.platform)
-    work_dir = (
-        config.TMP_DIR
-        / "workspaces"
-        / str(job.workspace_id)
-        / "jobs"
-        / str(job.id)
-    )
-    media_path = work_dir / "publish" / Path(context.storage_key).name
-    try:
-        _require_lease(heartbeat, "avant le téléchargement du rendu")
-        download_from_r2(context.storage_key, media_path)
-        credentials = _load_credentials(context.connection_id, settings.social_credentials_key)
-        if _needs_refresh(credentials):
-            credentials = publisher.refresh_credentials(credentials)
-            _persist_credentials(
-                context.connection_id, credentials, settings.social_credentials_key
-            )
-        media_url = None
-        if context.platform is ChannelPlatform.INSTAGRAM:
-            from core.storage_r2 import create_presigned_download_url
-
-            media_url = create_presigned_download_url(
-                context.storage_key, settings.r2_signed_url_ttl_seconds
-            )
-        request = PublishRequest(
-            media_path=media_path,
-            title=context.title,
-            description=context.description,
-            visibility=context.visibility,
-            scheduled_at=context.scheduled_at,
-            media_url=media_url,
-        )
-        publisher.validate_media(request)
-        _require_lease(heartbeat, "avant l'envoi vers la plateforme")
-        result = publisher.publish(
-            credentials, context.channel_external_id, request
-        )
-        return _persist_result(context, result)
-    except Exception as exc:
-        _persist_failure(context.publication_id, exc)
-        raise
-    finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def _load_context(job: Job) -> PublishContext:
@@ -156,13 +177,7 @@ def _load_context(job: Job) -> PublishContext:
         publication, video, channel, connection = row
         if not video.rendered_storage_key:
             raise ValueError("La vidéo rendue est introuvable.")
-        if publication.external_id:
-            if publication.scheduled_at:
-                publication.status = PublicationStatus.SCHEDULED
-            else:
-                publication.status = PublicationStatus.PUBLISHED
-            db.commit()
-        else:
+        if not publication.external_id:
             publication.status = PublicationStatus.PUBLISHING
             publication.error_message = None
             db.commit()
@@ -244,6 +259,38 @@ def _persist_result(context: PublishContext, result: PublishResult) -> dict:
             publication.published_at = result.published_at or now
         db.commit()
     return _result(context.publication_id, result.external_id)
+
+
+def _persist_reconciliation(context: PublishContext, provider_status: str) -> dict:
+    normalized = provider_status.strip().lower()
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        publication = db.get(Publication, context.publication_id)
+        if publication is None:
+            raise ValueError("La publication est introuvable pendant la réconciliation.")
+        response = dict(publication.provider_response or {})
+        response["reconciled_status"] = provider_status
+        response["reconciled_at"] = now.isoformat()
+        publication.provider_response = response
+        if normalized in PUBLISHED_PROVIDER_STATUSES:
+            publication.status = PublicationStatus.PUBLISHED
+            publication.published_at = publication.published_at or now
+            publication.error_message = None
+        elif normalized in FAILED_PROVIDER_STATUSES:
+            publication.status = PublicationStatus.FAILED
+            publication.error_message = (
+                f"Le fournisseur signale le statut terminal {provider_status}."
+            )
+        else:
+            publication.status = PublicationStatus.PUBLISHING
+        db.commit()
+    if normalized not in PUBLISHED_PROVIDER_STATUSES | FAILED_PROVIDER_STATUSES:
+        raise JobDeferred(
+            f"Statut fournisseur encore en cours : {provider_status}.",
+        )
+    if normalized in FAILED_PROVIDER_STATUSES:
+        raise RuntimeError(f"Publication refusée par le fournisseur : {provider_status}.")
+    return _result(context.publication_id, context.existing_external_id or "")
 
 
 def _persist_failure(publication_id: uuid.UUID, exc: Exception) -> None:

@@ -15,11 +15,12 @@ from api.database import SessionLocal
 from workers.job_state import (
     claim_next_job,
     complete_job,
+    defer_job,
     fail_job,
     heartbeat_job,
     recover_stale_jobs,
 )
-from workers.registry import HandlerRegistry
+from workers.registry import HandlerRegistry, JobDeferred
 from workers.signals import WAKEUP_CHANNEL
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,16 @@ class WorkerRunner:
         heartbeat_thread.start()
         try:
             result = handler(job, heartbeat)
+        except JobDeferred as exc:
+            logger.info("Job %s différé : %s", job.id, exc)
+            with SessionLocal() as deferred_db:
+                defer_job(
+                    deferred_db,
+                    job.id,
+                    self.worker_id,
+                    str(exc),
+                    exc.delay_seconds,
+                )
         except Exception as exc:
             logger.exception("Échec du job %s", job.id)
             with SessionLocal() as failure_db:

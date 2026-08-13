@@ -101,6 +101,30 @@ def fail_job(
     return job.status
 
 
+def defer_job(
+    db: Session,
+    job_id: uuid.UUID,
+    worker_id: str,
+    reason: str,
+    delay_seconds: int = 30,
+) -> bool:
+    """Remet un job en file sans consommer une tentative d'exécution."""
+    job = _owned_running_job(db, job_id, worker_id)
+    if job is None:
+        db.rollback()
+        return False
+    now = datetime.now(timezone.utc)
+    job.status = JobStatus.QUEUED
+    job.attempts = max(0, job.attempts - 1)
+    job.available_at = now + timedelta(seconds=max(0, delay_seconds))
+    job.started_at = None
+    job.heartbeat_at = now
+    job.worker_id = None
+    job.error_message = reason[:2000]
+    db.commit()
+    return True
+
+
 def recover_stale_jobs(db: Session, stale_after_seconds: int = 300) -> int:
     """Replace en attente les jobs dont le worker ne renouvelle plus la lease."""
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=stale_after_seconds)
