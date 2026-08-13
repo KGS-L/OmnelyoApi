@@ -185,12 +185,12 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] Retourner les workspaces accessibles avec `GET /v1/workspaces`.
 - [x] Ajouter la dépendance `get_current_workspace_member`.
 - [x] Appliquer les rôles `owner`, `admin` et `member`.
-- [ ] Ajouter des tests d'intégration d'isolation entre deux workspaces.
+- [x] Ajouter des tests d'intégration d'isolation entre deux workspaces.
 - [x] Ne jamais faire confiance à un `workspace_id` sans vérifier le membership.
 
 ### Phase 2 — API métier
 
-- [ ] Écrire les schémas Pydantic de `Channel`, `Video`, `Job` et `Publication`.
+- [~] Écrire les schémas Pydantic de `Channel`, `Video`, `Job` et `Publication` (`Channel` terminé).
 - [ ] Écrire repositories et services filtrés par workspace.
 - [ ] Ajouter CRUD, pagination, filtres et réponses d'erreur cohérentes.
 - [ ] Ajouter upload vidéo par flux, limites de taille et validation MIME réelle.
