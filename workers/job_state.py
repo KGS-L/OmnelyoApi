@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from api.models import Job, JobStatus, JobType
+from api.models import CreditReservation, CreditReservationStatus, Job, JobStatus, JobType
 
 
 def claim_next_job(
@@ -80,6 +80,7 @@ def complete_job(
     job.finished_at = datetime.now(timezone.utc)
     job.heartbeat_at = job.finished_at
     job.worker_id = None
+    _resolve_render_credit(db, job, capture=True)
     db.commit()
     return True
 
@@ -106,6 +107,7 @@ def fail_job(
     else:
         job.status = JobStatus.FAILED
         job.finished_at = now
+        _resolve_render_credit(db, job, capture=False)
     db.commit()
     return job.status
 
@@ -162,6 +164,7 @@ def recover_stale_jobs(db: Session, stale_after_seconds: int = 300) -> int:
         else:
             job.status = JobStatus.FAILED
             job.finished_at = now
+            _resolve_render_credit(db, job, capture=False)
     db.commit()
     return len(jobs)
 
@@ -176,3 +179,16 @@ def _owned_running_job(
             Job.worker_id == worker_id,
         )
     )
+
+
+def _resolve_render_credit(db: Session, job: Job, capture: bool) -> None:
+    if job.type is not JobType.RENDER:
+        return
+    reservation = db.scalar(select(CreditReservation).where(CreditReservation.job_id == job.id))
+    if reservation is None or reservation.status is not CreditReservationStatus.ACTIVE:
+        return
+    from api.credit_service import CreditService
+    if capture:
+        CreditService().capture(db, reservation.id)
+    else:
+        CreditService().release(db, reservation.id)

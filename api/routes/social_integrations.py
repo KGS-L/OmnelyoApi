@@ -32,6 +32,7 @@ from api.schemas import (
     SocialOAuthStartResponse,
 )
 from api.security.social_credentials import SocialCredentialCipher
+from api.quota_service import QuotaExceeded, QuotaService
 
 workspace_router = APIRouter(
     prefix="/workspaces/{workspace_id}/integrations/social", tags=["integrations"]
@@ -65,7 +66,14 @@ def start_social_oauth(
     ],
     user: Annotated[User, Depends(get_current_user)],
     settings: Annotated[APISettings, Depends(get_settings)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> SocialOAuthStartResponse:
+    try:
+        QuotaService().ensure_social_connection_available(db, workspace_id)
+        db.commit()
+    except QuotaExceeded as exc:
+        db.rollback()
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     publisher = _publisher(platform)
     callback_uri = _callback_uri(settings, platform)
     state_service = SocialOAuthStateService(

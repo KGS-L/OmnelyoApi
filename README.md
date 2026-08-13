@@ -287,9 +287,16 @@ Routes disponibles lorsque `BILLING_ENABLED=true` :
 - `POST /v1/billing/webhooks/dodo` ;
 - `POST /v1/billing/webhooks/moneyfusion` ;
 - `GET|POST /v1/billing/callbacks/moneyfusion`.
+- `GET /v1/billing/plans` ;
+- `GET /v1/workspaces/{workspace_id}/billing/credits` ;
+- `GET /v1/workspaces/{workspace_id}/billing/credits/history`.
 
-Cette couche enregistre et valide les paiements, mais n'accorde pas encore de
-crédits et n'applique pas encore les quotas du produit final.
+Les plans techniques `FREE`, `CREATOR` et `PRO` fournissent respectivement
+3/30/100 crédits mensuels et autorisent 1/2/8 connexions sociales. Un job
+`RENDER` réserve un crédit, le capture après succès et le libère après annulation
+ou échec définitif. Le ledger est append-only et toutes les opérations sont
+idempotentes. Les prix et l'attribution après paiement restent désactivés tant
+que la grille commerciale n'est pas validée.
 
 L'atelier décrit dans [IMPLEMENTATION_BACKEND.md](IMPLEMENTATION_BACKEND.md) doit
 d'abord fixer la cible, l'unité de crédit, les quotas, les remboursements et les
@@ -366,6 +373,7 @@ documentés dans [CI_CD.md](CI_CD.md).
 - [x] Docker Compose, CI et déploiement VPS ;
 - [ ] fournisseur d'emails transactionnels ;
 - [ ] atelier business model, quotas et règles de crédits ;
+- [x] plans techniques, quotas sociaux/jobs et ledger de crédits PostgreSQL ;
 - [x] endpoints de paiement Dodo/MoneyFusion et webhooks idempotents ;
 - [ ] migration et validation des données SQLite historiques ;
 - [ ] métriques, alertes, rétention et sauvegardes testées ;

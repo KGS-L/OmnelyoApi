@@ -11,10 +11,20 @@ from redis import Redis
 
 from api.database import get_db
 from api.dependencies import get_current_workspace_membership
-from api.models import Job, JobStatus, JobType, Video, WorkspaceMembership
+from api.models import (
+    CreditReservation,
+    CreditReservationStatus,
+    Job,
+    JobStatus,
+    JobType,
+    Video,
+    WorkspaceMembership,
+)
 from api.schemas import JobCreate, JobResponse
 from api.config import APISettings, get_settings
 from workers.signals import notify_workers
+from api.credit_service import CreditService, InsufficientCredits
+from api.quota_service import QuotaExceeded, QuotaService
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/jobs", tags=["jobs"])
 logger = logging.getLogger(__name__)
@@ -123,8 +133,20 @@ def create_job(
 ) -> Job:
     if payload.video_id is not None:
         _ensure_video_in_workspace(db, workspace_id, payload.video_id)
+    try:
+        QuotaService().ensure_job_slot_available(db, workspace_id)
+    except QuotaExceeded as exc:
+        db.rollback()
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     job = Job(workspace_id=workspace_id, **payload.model_dump())
     db.add(job)
+    db.flush()
+    if job.type is JobType.RENDER:
+        try:
+            CreditService().reserve(db, workspace_id, 1, f"render-job:{job.id}", job.id)
+        except InsufficientCredits as exc:
+            db.rollback()
+            raise HTTPException(status_code=402, detail=str(exc)) from exc
     db.commit()
     db.refresh(job)
     notify_workers(
@@ -149,6 +171,10 @@ def cancel_job(
 ) -> Job:
     job = _get_job(db, workspace_id, job_id)
     cancel_job_record(job)
+    if job.type is JobType.RENDER:
+        reservation = db.scalar(select(CreditReservation).where(CreditReservation.job_id == job.id))
+        if reservation is not None and reservation.status is CreditReservationStatus.ACTIVE:
+            CreditService().release(db, reservation.id)
     db.commit()
     db.refresh(job)
     return job

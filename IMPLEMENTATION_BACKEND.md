@@ -73,10 +73,10 @@ crédit ou quota ne doit être considéré comme validé.
 ### Travaux techniques après décision
 
 - [~] Migrer plans, paiements, ledger et abonnements de SQLite vers PostgreSQL (paiements, mappings et abonnements techniques terminés ; plans produit et ledger restants).
-- [ ] Ajouter un ledger immuable avec crédits positifs et débits négatifs.
-- [ ] Réserver les crédits avant un job, puis régulariser selon le coût réel.
-- [~] Garantir l'idempotence des débits, remboursements et webhooks (webhooks terminés ; ledger restant).
-- [~] Ajouter les routes de catalogue, solde, checkout et historique (checkout terminé ; catalogue, solde et historique restants).
+- [x] Ajouter un ledger immuable avec crédits positifs et débits négatifs.
+- [x] Réserver un crédit avant `RENDER`, le capturer au succès et le libérer après annulation ou échec définitif.
+- [~] Garantir l'idempotence des débits, remboursements et webhooks (réservations et webhooks terminés ; attribution post-paiement et remboursements commerciaux restants).
+- [x] Ajouter les routes de catalogue, solde, checkout et historique.
 - [x] Ajouter Dodo Payments (abonnements/international) et MoneyFusion (paiements ponctuels XOF), avec confirmation serveur des notifications non signées MoneyFusion.
 
 ## 3. Liaison du compte web à Telegram
@@ -225,7 +225,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 - [ ] Organiser et valider l'atelier de la section 2.
 - [~] Implémenter le modèle retenu dans PostgreSQL (socle paiements, abonnements et mappings terminé ; règles commerciales restantes).
-- [ ] Ajouter quotas avant de permettre une utilisation publique.
+- [~] Ajouter quotas avant de permettre une utilisation publique (connexions sociales, jobs simultanés et crédits terminés ; minutes source, stockage et publications restants).
 - [x] Implémenter les checkouts et webhooks Dodo/MoneyFusion derrière `BILLING_ENABLED`, avec tests PostgreSQL d'idempotence et de sécurité.
 
 ### Phase 7 — Production

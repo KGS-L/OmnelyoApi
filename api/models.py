@@ -579,3 +579,115 @@ class ProviderPriceMapping(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+# --- Plans, entitlements and immutable credit accounting ---
+
+class CreditEntryType(str, enum.Enum):
+    GRANT = "grant"
+    RESERVE = "reserve"
+    CAPTURE = "capture"
+    RELEASE = "release"
+    REFUND = "refund"
+    EXPIRE = "expire"
+    ADJUSTMENT = "adjustment"
+
+
+class CreditReservationStatus(str, enum.Enum):
+    ACTIVE = "active"
+    CAPTURED = "captured"
+    RELEASED = "released"
+
+
+class BillingPlan(Base):
+    __tablename__ = "billing_plans"
+
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(64))
+    monthly_credits: Mapped[int] = mapped_column(Integer)
+    social_connections_limit: Mapped[int] = mapped_column(Integer)
+    workspaces_limit: Mapped[int] = mapped_column(Integer)
+    members_per_workspace_limit: Mapped[int] = mapped_column(Integer)
+    concurrent_jobs_limit: Mapped[int] = mapped_column(Integer)
+    source_minutes_monthly_limit: Mapped[int] = mapped_column(Integer)
+    publications_monthly_limit: Mapped[int] = mapped_column(Integer)
+    storage_bytes_limit: Mapped[int] = mapped_column(BigInteger)
+    retention_days: Mapped[int] = mapped_column(Integer)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class WorkspaceEntitlement(Base):
+    __tablename__ = "workspace_entitlements"
+
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), primary_key=True
+    )
+    plan_code: Mapped[str] = mapped_column(ForeignKey("billing_plans.code"), index=True)
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CreditAccount(Base):
+    __tablename__ = "credit_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CreditReservation(Base):
+    __tablename__ = "credit_reservations"
+    __table_args__ = (
+        UniqueConstraint("account_id", "idempotency_key", name="uq_credit_reservations_account_idem"),
+        CheckConstraint("amount > 0", name="ck_credit_reservations_amount_positive"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("credit_accounts.id", ondelete="CASCADE"), index=True
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("jobs.id", ondelete="SET NULL"), unique=True, index=True
+    )
+    amount: Mapped[int] = mapped_column(Integer)
+    status: Mapped[CreditReservationStatus] = mapped_column(
+        Enum(CreditReservationStatus, name="credit_reservation_status", values_callable=_enum_values),
+        default=CreditReservationStatus.ACTIVE,
+        index=True,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CreditLedgerEntry(Base):
+    __tablename__ = "credit_ledger_entries"
+    __table_args__ = (
+        UniqueConstraint("account_id", "idempotency_key", name="uq_credit_ledger_account_idem"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("credit_accounts.id", ondelete="CASCADE"), index=True
+    )
+    reservation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("credit_reservations.id", ondelete="SET NULL"), index=True
+    )
+    entry_type: Mapped[CreditEntryType] = mapped_column(
+        Enum(CreditEntryType, name="credit_entry_type", values_callable=_enum_values), index=True
+    )
+    amount: Mapped[int] = mapped_column(Integer)
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(String(255))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

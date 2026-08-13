@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from api.billing_providers.dodo import DodoPaymentProvider
 from api.billing_providers.moneyfusion import MoneyFusionPaymentProvider
@@ -22,7 +23,8 @@ from api.config import APISettings, get_settings
 from api.database import get_db
 from api.dependencies import get_current_workspace_membership, require_workspace_roles
 from api.models import PaymentIntent
-from api.models import WorkspaceRole
+from api.models import BillingPlan, CreditLedgerEntry, WorkspaceRole
+from api.credit_service import CreditService
 
 router = APIRouter(tags=["billing"])
 
@@ -50,6 +52,39 @@ class PortalResponse(BaseModel):
     url: str
 
 
+class PlanResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    code: str
+    name: str
+    monthly_credits: int
+    social_connections_limit: int
+    workspaces_limit: int
+    members_per_workspace_limit: int
+    concurrent_jobs_limit: int
+    source_minutes_monthly_limit: int
+    publications_monthly_limit: int
+    storage_bytes_limit: int
+    retention_days: int
+
+
+class CreditSummaryResponse(BaseModel):
+    workspace_id: uuid.UUID
+    plan: PlanResponse
+    balance: int
+    period_start: str
+    period_end: str
+
+
+class CreditEntryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    entry_type: str
+    amount: int
+    description: str | None
+    expires_at: str | None
+    created_at: str
+
+
 # ----- Helpers -----
 
 def _ensure_billing_enabled(settings: APISettings) -> None:
@@ -75,6 +110,60 @@ def _provider_factory(settings: APISettings, provider_name: str | None = None):
 
 
 # ----- Routes -----
+
+@router.get("/billing/plans", response_model=list[PlanResponse])
+def list_billing_plans(
+    db: Annotated[Session, Depends(get_db)] = None,
+) -> list[BillingPlan]:
+    return list(db.scalars(select(BillingPlan).where(BillingPlan.active.is_(True)).order_by(BillingPlan.monthly_credits)))
+
+
+@router.get("/workspaces/{workspace_id}/billing/credits", response_model=CreditSummaryResponse)
+def credit_summary(
+    workspace_id: uuid.UUID,
+    membership=Depends(get_current_workspace_membership),
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    if membership.workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Workspace introuvable.")
+    entitlement, plan, _, balance = CreditService().workspace_summary(db, workspace_id)
+    db.commit()
+    return CreditSummaryResponse(
+        workspace_id=workspace_id,
+        plan=PlanResponse.model_validate(plan),
+        balance=balance,
+        period_start=entitlement.period_start.isoformat(),
+        period_end=entitlement.period_end.isoformat(),
+    )
+
+
+@router.get("/workspaces/{workspace_id}/billing/credits/history", response_model=list[CreditEntryResponse])
+def credit_history(
+    workspace_id: uuid.UUID,
+    membership=Depends(get_current_workspace_membership),
+    db: Annotated[Session, Depends(get_db)] = None,
+    limit: int = 50,
+):
+    if membership.workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Workspace introuvable.")
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit doit être compris entre 1 et 200.")
+    _, account = CreditService().ensure_workspace(db, workspace_id)
+    entries = list(db.scalars(
+        select(CreditLedgerEntry)
+        .where(CreditLedgerEntry.account_id == account.id)
+        .order_by(CreditLedgerEntry.created_at.desc(), CreditLedgerEntry.id.desc())
+        .limit(limit)
+    ))
+    db.commit()
+    return [CreditEntryResponse(
+        id=e.id,
+        entry_type=e.entry_type.value,
+        amount=e.amount,
+        description=e.description,
+        expires_at=e.expires_at.isoformat() if e.expires_at else None,
+        created_at=e.created_at.isoformat(),
+    ) for e in entries]
 
 @router.post("/workspaces/{workspace_id}/billing/checkout", response_model=CheckoutResponse)
 def start_checkout(
