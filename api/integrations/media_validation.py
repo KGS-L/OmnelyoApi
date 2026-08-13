@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import PurePosixPath
 
 from api.integrations.social import SocialErrorCode, SocialPublisherError
-from api.models import ChannelPlatform, PublicationVisibility
+from api.models import ChannelPlatform, PublicationFormat, PublicationVisibility
 
 YOUTUBE_SHORT_MAX_SECONDS = 180
 YOUTUBE_TITLE_MAX_LENGTH = 100
@@ -19,7 +19,25 @@ def validate_publication_preflight(
     description: str | None,
     visibility: PublicationVisibility,
     scheduled_at: datetime | None,
+    format: PublicationFormat = PublicationFormat.SHORT_VIDEO,
+    media_count: int = 1,
 ) -> None:
+    if format in {PublicationFormat.PHOTO, PublicationFormat.CAROUSEL}:
+        if platform is ChannelPlatform.YOUTUBE:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "YouTube n'accepte pas les publications photo dans ce flux.")
+        if platform not in {ChannelPlatform.TIKTOK, ChannelPlatform.FACEBOOK, ChannelPlatform.INSTAGRAM}:
+            raise SocialPublisherError(SocialErrorCode.AUTHORIZATION, f"La publication {platform.value} n'est pas disponible.")
+        expected = 1 if format is PublicationFormat.PHOTO else None
+        if expected == 1 and media_count != 1 or format is PublicationFormat.CAROUSEL and not 2 <= media_count <= 10:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "Le nombre d'images est invalide.")
+        if PurePosixPath(storage_key).suffix.lower() not in {".jpg", ".png"}:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "Une image JPEG ou PNG est requise.")
+        if scheduled_at is not None:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "La programmation des photos n'est pas encore activée.")
+        required_visibility = PublicationVisibility.PRIVATE if platform is ChannelPlatform.TIKTOK else PublicationVisibility.PUBLIC
+        if visibility is not required_visibility:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "La visibilité n'est pas compatible avec cette plateforme.")
+        return
     if platform is ChannelPlatform.TIKTOK:
         suffix = PurePosixPath(storage_key).suffix.lower()
         if suffix not in {".mp4", ".mov", ".webm"}:
@@ -69,7 +87,7 @@ def validate_publication_preflight(
             SocialErrorCode.VALIDATION,
             "La durée du rendu doit être connue avant publication.",
         )
-    if duration_seconds > YOUTUBE_SHORT_MAX_SECONDS:
+    if format is PublicationFormat.SHORT_VIDEO and duration_seconds > YOUTUBE_SHORT_MAX_SECONDS:
         raise SocialPublisherError(
             SocialErrorCode.VALIDATION,
             "Un Short YouTube ne peut pas dépasser 3 minutes.",

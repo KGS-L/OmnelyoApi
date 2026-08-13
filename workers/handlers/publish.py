@@ -25,7 +25,10 @@ from api.models import (
     ChannelStatus,
     Job,
     JobType,
+    MediaAsset,
     Publication,
+    PublicationFormat,
+    PublicationMediaAsset,
     PublicationStatus,
     PublicationVisibility,
     SocialConnection,
@@ -49,7 +52,8 @@ class PublishContext:
     connection_id: uuid.UUID
     platform: ChannelPlatform
     channel_external_id: str
-    storage_key: str
+    storage_keys: tuple[str, ...]
+    format: PublicationFormat
     title: str
     description: str | None
     visibility: PublicationVisibility
@@ -85,24 +89,32 @@ def publish_video(job: Job, heartbeat) -> dict:
         / "jobs"
         / str(job.id)
     )
-    media_path = work_dir / "publish" / Path(context.storage_key).name
+    media_paths = tuple(
+        work_dir / "publish" / f"{index:02d}-{Path(key).name}"
+        for index, key in enumerate(context.storage_keys)
+    )
     try:
         _require_lease(heartbeat, "avant le téléchargement du rendu", 10)
-        download_from_r2(context.storage_key, media_path)
-        media_url = None
-        if context.platform is ChannelPlatform.INSTAGRAM:
+        for storage_key, media_path in zip(context.storage_keys, media_paths):
+            download_from_r2(storage_key, media_path)
+        media_urls: tuple[str, ...] = ()
+        if context.platform in {ChannelPlatform.INSTAGRAM, ChannelPlatform.TIKTOK}:
             from core.storage_r2 import create_presigned_download_url
 
-            media_url = create_presigned_download_url(
-                context.storage_key, settings.r2_signed_url_ttl_seconds
+            media_urls = tuple(
+                create_presigned_download_url(key, settings.r2_signed_url_ttl_seconds)
+                for key in context.storage_keys
             )
         request = PublishRequest(
-            media_path=media_path,
+            media_path=media_paths[0],
             title=context.title,
             description=context.description,
             visibility=context.visibility,
             scheduled_at=context.scheduled_at,
-            media_url=media_url,
+            media_url=media_urls[0] if media_urls else None,
+            format=context.format,
+            media_paths=media_paths,
+            media_urls=media_urls,
         )
         publisher.validate_media(request)
         _require_lease(heartbeat, "avant l'envoi vers la plateforme", 60)
@@ -155,16 +167,13 @@ def _load_context(job: Job) -> PublishContext:
         raise ValueError("Le job PUBLISH requiert une publication valide.") from exc
     with SessionLocal() as db:
         row = db.execute(
-            select(Publication, Video, Channel, SocialConnection)
-            .join(Video, Video.id == Publication.video_id)
+            select(Publication, Channel, SocialConnection)
             .join(Channel, Channel.id == Publication.channel_id)
             .join(SocialConnection, SocialConnection.id == Channel.connection_id)
             .where(
                 Publication.id == publication_id,
                 Publication.workspace_id == job.workspace_id,
                 Publication.job_id == job.id,
-                Video.workspace_id == job.workspace_id,
-                Video.id == job.video_id,
                 Channel.workspace_id == job.workspace_id,
                 Channel.status == ChannelStatus.ACTIVE,
                 SocialConnection.workspace_id == job.workspace_id,
@@ -174,9 +183,34 @@ def _load_context(job: Job) -> PublishContext:
         ).one_or_none()
         if row is None:
             raise ValueError("La publication ou sa connexion est introuvable.")
-        publication, video, channel, connection = row
-        if not video.rendered_storage_key:
-            raise ValueError("La vidéo rendue est introuvable.")
+        publication, channel, connection = row
+        if publication.video_id is not None:
+            video = db.scalar(select(Video).where(
+                Video.id == publication.video_id,
+                Video.workspace_id == job.workspace_id,
+            ))
+            if video is None:
+                raise ValueError("La vidéo est introuvable.")
+            storage_key = (
+                video.storage_key
+                if publication.format is PublicationFormat.STANDARD_VIDEO
+                else video.rendered_storage_key
+            )
+            if not storage_key:
+                raise ValueError("L'artefact vidéo est introuvable.")
+            storage_keys = (storage_key,)
+        else:
+            storage_keys = tuple(db.scalars(
+                select(MediaAsset.storage_key)
+                .join(PublicationMediaAsset, PublicationMediaAsset.asset_id == MediaAsset.id)
+                .where(
+                    PublicationMediaAsset.publication_id == publication.id,
+                    MediaAsset.workspace_id == job.workspace_id,
+                )
+                .order_by(PublicationMediaAsset.position)
+            ))
+            if not storage_keys:
+                raise ValueError("Les images de la publication sont introuvables.")
         if not publication.external_id:
             publication.status = PublicationStatus.PUBLISHING
             publication.error_message = None
@@ -186,7 +220,8 @@ def _load_context(job: Job) -> PublishContext:
             connection_id=connection.id,
             platform=channel.platform,
             channel_external_id=channel.external_id,
-            storage_key=video.rendered_storage_key,
+            storage_keys=storage_keys,
+            format=publication.format,
             title=publication.title,
             description=publication.description,
             visibility=publication.visibility,

@@ -9,7 +9,7 @@ from api.integrations.social import (
     OAuthGrant, PublisherCredentials, PublishRequest, PublishResult, SocialChannel,
     SocialErrorCode, SocialPublisher, SocialPublisherError,
 )
-from api.models import ChannelPlatform, PublicationVisibility
+from api.models import ChannelPlatform, PublicationFormat, PublicationVisibility
 
 API_BASE = "https://open.tiktokapis.com"
 AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/"
@@ -64,9 +64,17 @@ class TikTokPublisher(SocialPublisher):
         return [SocialChannel(data["open_id"], data.get("display_name") or "TikTok", avatar_url=data.get("avatar_url"))]
 
     def validate_media(self, request: PublishRequest) -> None:
-        if not request.media_path.is_file() or request.media_path.suffix.lower() not in {".mp4", ".mov", ".webm"}:
+        paths = request.media_paths or (request.media_path,)
+        if request.format in {PublicationFormat.PHOTO, PublicationFormat.CAROUSEL}:
+            if not 1 <= len(paths) <= 35:
+                raise SocialPublisherError(SocialErrorCode.VALIDATION, "TikTok accepte entre 1 et 35 images.")
+            if any(not path.is_file() or path.suffix.lower() not in {".jpg", ".png"} for path in paths):
+                raise SocialPublisherError(SocialErrorCode.VALIDATION, "TikTok attend des images JPEG ou PNG.")
+            if len(request.media_urls) != len(paths) or any(not url.startswith("https://") for url in request.media_urls):
+                raise SocialPublisherError(SocialErrorCode.VALIDATION, "TikTok requiert une URL HTTPS pour chaque image.")
+        elif not request.media_path.is_file() or request.media_path.suffix.lower() not in {".mp4", ".mov", ".webm"}:
             raise SocialPublisherError(SocialErrorCode.VALIDATION, "TikTok attend une vidéo MP4, MOV ou WebM.")
-        if request.media_path.stat().st_size > 64 * 1024**2:
+        if request.format in {PublicationFormat.SHORT_VIDEO, PublicationFormat.STANDARD_VIDEO} and request.media_path.stat().st_size > 64 * 1024**2:
             raise SocialPublisherError(SocialErrorCode.VALIDATION, "Le mode d'upload TikTok initial est limité à 64 Mo.")
         if request.scheduled_at is not None:
             raise SocialPublisherError(SocialErrorCode.VALIDATION, "TikTok ne prend pas en charge la programmation différée.")
@@ -75,6 +83,23 @@ class TikTokPublisher(SocialPublisher):
 
     def publish(self, credentials, channel_external_id, request):
         self.validate_media(request)
+        if request.format in {PublicationFormat.PHOTO, PublicationFormat.CAROUSEL}:
+            data = self._request("POST", "/v2/post/publish/content/init/", credentials, json={
+                "post_info": {
+                    "title": request.description or request.title,
+                    "privacy_level": "SELF_ONLY",
+                    "disable_comment": False,
+                    "auto_add_music": True,
+                },
+                "source_info": {
+                    "source": "PULL_FROM_URL",
+                    "photo_cover_index": 0,
+                    "photo_images": list(request.media_urls),
+                },
+                "post_mode": "DIRECT_POST",
+                "media_type": "PHOTO",
+            })["data"]
+            return PublishResult(data["publish_id"], "processing", raw_response={"publish_id": data["publish_id"]})
         size = request.media_path.stat().st_size
         init = self._request("POST", "/v2/post/publish/video/init/", credentials, json={
             "post_info": {"title": request.description or request.title, "privacy_level": "SELF_ONLY",

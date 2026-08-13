@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 from api.integrations.facebook import FacebookPublisher
 from api.integrations.social import PublishRequest, SocialPublisherError
 from api.integrations.social import PublisherCredentials
-from api.models import PublicationVisibility
+from api.models import PublicationFormat, PublicationVisibility
 
 
 class FacebookPublisherTests(unittest.TestCase):
@@ -60,6 +60,21 @@ class FacebookPublisherTests(unittest.TestCase):
         self.assertEqual(result.external_id, "video-1")
         self.assertEqual(result.status, "processing")
         self.assertEqual(graph_request.call_count, 2)
+
+    @patch.object(FacebookPublisher, "_request")
+    def test_carousel_uploads_unpublished_photos_then_feed(self, request):
+        request.side_effect = [{"id": "photo-1"}, {"id": "photo-2"}, {"id": "post-1"}]
+        with tempfile.NamedTemporaryFile(suffix=".jpg") as first, tempfile.NamedTemporaryFile(suffix=".png") as second:
+            result = self.publisher.publish(
+                PublisherCredentials("page-token", None, [], None), "page-1",
+                PublishRequest(
+                    Path(first.name), "Titre", None, PublicationVisibility.PUBLIC,
+                    format=PublicationFormat.CAROUSEL,
+                    media_paths=(Path(first.name), Path(second.name)),
+                ),
+            )
+        self.assertEqual(result.external_id, "post-1")
+        self.assertIn('"media_fbid": "photo-1"', request.call_args.kwargs["params"]["attached_media"])
 
 
 if __name__ == "__main__":

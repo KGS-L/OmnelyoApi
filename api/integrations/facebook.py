@@ -1,4 +1,5 @@
-"""Adaptateur Facebook Reels Publishing pour les Pages Meta."""
+"""Adaptateur Facebook Reels et photos pour les Pages Meta."""
+import json
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
@@ -14,7 +15,7 @@ from api.integrations.social import (
     SocialPublisher,
     SocialPublisherError,
 )
-from api.models import ChannelPlatform, PublicationVisibility
+from api.models import ChannelPlatform, PublicationFormat, PublicationVisibility
 
 AUTH_URL = "https://www.facebook.com/dialog/oauth"
 SCOPES = ["pages_show_list", "pages_read_engagement", "pages_manage_posts"]
@@ -102,7 +103,18 @@ class FacebookPublisher(SocialPublisher):
         ]
 
     def validate_media(self, request: PublishRequest) -> None:
-        if not request.media_path.is_file() or request.media_path.suffix.lower() not in {
+        paths = request.media_paths or (request.media_path,)
+        if request.format in {PublicationFormat.PHOTO, PublicationFormat.CAROUSEL}:
+            invalid_count = (
+                request.format is PublicationFormat.PHOTO and len(paths) != 1
+            ) or (
+                request.format is PublicationFormat.CAROUSEL and not 2 <= len(paths) <= 10
+            )
+            if invalid_count:
+                raise SocialPublisherError(SocialErrorCode.VALIDATION, "Facebook attend une photo ou un carrousel de 2 à 10 images.")
+            if any(not path.is_file() or path.suffix.lower() not in {".jpg", ".png"} for path in paths):
+                raise SocialPublisherError(SocialErrorCode.VALIDATION, "Facebook attend des images JPEG ou PNG.")
+        elif not request.media_path.is_file() or request.media_path.suffix.lower() not in {
             ".mp4",
             ".mov",
         }:
@@ -122,6 +134,8 @@ class FacebookPublisher(SocialPublisher):
 
     def publish(self, credentials, channel_external_id, request):
         self.validate_media(request)
+        if request.format in {PublicationFormat.PHOTO, PublicationFormat.CAROUSEL}:
+            return self._publish_images(credentials, channel_external_id, request)
         start = self._request(
             "POST",
             f"/{channel_external_id}/video_reels",
@@ -165,6 +179,34 @@ class FacebookPublisher(SocialPublisher):
             "processing",
             raw_response={"video_id": video_id, "success": finished.get("success")},
         )
+
+    def _publish_images(self, credentials, channel_external_id, request):
+        paths = request.media_paths or (request.media_path,)
+        caption = request.description or request.title
+        if request.format is PublicationFormat.PHOTO:
+            with paths[0].open("rb") as image:
+                payload = self._request(
+                    "POST", f"/{channel_external_id}/photos", credentials.access_token,
+                    params={"message": caption, "published": "true"},
+                    files={"source": (paths[0].name, image)},
+                )
+            external_id = payload.get("post_id") or payload["id"]
+            return PublishResult(external_id, "published", published_at=datetime.now(timezone.utc), raw_response=payload)
+        photo_ids = []
+        for path in paths:
+            with path.open("rb") as image:
+                photo_ids.append(self._request(
+                    "POST", f"/{channel_external_id}/photos", credentials.access_token,
+                    params={"published": "false"}, files={"source": (path.name, image)},
+                )["id"])
+        payload = self._request(
+            "POST", f"/{channel_external_id}/feed", credentials.access_token,
+            params={
+                "message": caption,
+                "attached_media": json.dumps([{"media_fbid": photo_id} for photo_id in photo_ids]),
+            },
+        )
+        return PublishResult(payload["id"], "published", published_at=datetime.now(timezone.utc), raw_response=payload)
 
     def get_status(self, credentials, external_id):
         payload = self._request(

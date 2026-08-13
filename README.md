@@ -27,7 +27,8 @@ programmation et de publication de vidéos courtes. Le dépôt réunit actuellem
 - synthèse vocale avec OpenAI TTS ;
 - suppression de l'audio original et ajout d'une carte visuelle ;
 - archivage des rendus sur Cloudflare R2 (API compatible S3) ;
-- publication via YouTube, TikTok, Facebook Pages/Reels et Instagram Reels ;
+- publication vidéo via YouTube, TikTok, Facebook Pages/Reels et Instagram Reels ;
+- publication de photos et carrousels sur TikTok, Facebook Pages et Instagram professionnel ;
 - import d'un Short Telegram dans le workspace, puis choix des destinations sur le web ;
 - file durable PostgreSQL avec leases, heartbeat, retry et reprise après redémarrage ;
 - polling et réconciliation des statuts de publication chez les fournisseurs.

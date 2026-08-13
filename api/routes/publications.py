@@ -21,6 +21,7 @@ from api.models import (
     JobType,
     MediaAsset,
     Publication,
+    PublicationFormat,
     PublicationMediaAsset,
     PublicationStatus,
     SocialConnection,
@@ -207,14 +208,29 @@ def enqueue_publication_record(
 def _validate_enqueue_target(
     db: Session, workspace_id: uuid.UUID, publication: Publication
 ) -> None:
-    video = db.scalar(
-        select(Video).where(
-            Video.id == publication.video_id,
-            Video.workspace_id == workspace_id,
+    video = None
+    storage_keys: list[str] = []
+    if publication.video_id is not None:
+        video = db.scalar(select(Video).where(
+            Video.id == publication.video_id, Video.workspace_id == workspace_id
+        ))
+        storage_key = (
+            video.storage_key
+            if video is not None and publication.format is PublicationFormat.STANDARD_VIDEO
+            else video.rendered_storage_key if video is not None else None
         )
-    )
-    if video is None or not video.rendered_storage_key:
-        raise HTTPException(status_code=409, detail="La vidéo doit d'abord être rendue.")
+        if not storage_key:
+            raise HTTPException(status_code=409, detail="L'artefact vidéo doit d'abord être disponible.")
+        storage_keys = [storage_key]
+    else:
+        storage_keys = list(db.scalars(
+            select(MediaAsset.storage_key)
+            .join(PublicationMediaAsset, PublicationMediaAsset.asset_id == MediaAsset.id)
+            .where(PublicationMediaAsset.publication_id == publication.id, MediaAsset.workspace_id == workspace_id)
+            .order_by(PublicationMediaAsset.position)
+        ))
+        if not storage_keys:
+            raise HTTPException(status_code=409, detail="Les images sont introuvables.")
     destination = db.execute(
         select(Channel.id, SocialConnection.id, Channel.platform)
         .join(SocialConnection, SocialConnection.id == Channel.connection_id)
@@ -232,12 +248,14 @@ def _validate_enqueue_target(
     try:
         validate_publication_preflight(
             platform=destination[2],
-            storage_key=video.rendered_storage_key,
-            duration_seconds=video.duration_seconds,
+            storage_key=storage_keys[0],
+            duration_seconds=video.duration_seconds if video is not None else None,
             title=publication.title,
             description=publication.description,
             visibility=publication.visibility,
             scheduled_at=publication.scheduled_at,
+            format=publication.format,
+            media_count=len(storage_keys),
         )
     except SocialPublisherError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from api.integrations.instagram import InstagramPublisher
 from api.integrations.social import PublisherCredentials, PublishRequest, SocialPublisherError
-from api.models import PublicationVisibility
+from api.models import PublicationFormat, PublicationVisibility
 
 
 class InstagramPublisherTests(unittest.TestCase):
@@ -57,6 +57,28 @@ class InstagramPublisherTests(unittest.TestCase):
         self.assertEqual(result.external_id, "media-1")
         self.assertEqual(result.raw_response["container_id"], "container-1")
         sleep.assert_called_once_with(3)
+
+    @patch.object(InstagramPublisher, "_request")
+    def test_carousel_creates_children_parent_then_publishes(self, request):
+        request.side_effect = [
+            {"id": "child-1"}, {"id": "child-2"},
+            {"id": "carousel-1"}, {"id": "media-1"},
+        ]
+        with tempfile.NamedTemporaryFile(suffix=".jpg") as first, tempfile.NamedTemporaryFile(suffix=".png") as second:
+            result = self.publisher.publish(
+                PublisherCredentials("page-token", None, [], None),
+                "ig-1",
+                PublishRequest(
+                    Path(first.name), "Titre", "Légende", PublicationVisibility.PUBLIC,
+                    format=PublicationFormat.CAROUSEL,
+                    media_paths=(Path(first.name), Path(second.name)),
+                    media_urls=("https://cdn.test/1.jpg", "https://cdn.test/2.png"),
+                ),
+            )
+        self.assertEqual(result.external_id, "media-1")
+        parent = request.call_args_list[2].kwargs["params"]
+        self.assertEqual(parent["media_type"], "CAROUSEL")
+        self.assertEqual(parent["children"], "child-1,child-2")
 
 
 if __name__ == "__main__":

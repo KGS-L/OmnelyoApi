@@ -6,7 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from api.models import ChannelPlatform, PublicationVisibility
+from api.models import ChannelPlatform, PublicationFormat, PublicationVisibility
 
 
 class SocialErrorCode(str, Enum):
@@ -68,6 +68,9 @@ class PublishRequest:
     visibility: PublicationVisibility
     scheduled_at: datetime | None = None
     media_url: str | None = None
+    format: PublicationFormat = PublicationFormat.SHORT_VIDEO
+    media_paths: tuple[Path, ...] = ()
+    media_urls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

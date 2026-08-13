@@ -15,7 +15,7 @@ from api.integrations.social import (
     SocialPublisher,
     SocialPublisherError,
 )
-from api.models import ChannelPlatform, PublicationVisibility
+from api.models import ChannelPlatform, PublicationFormat, PublicationVisibility
 
 AUTH_URL = "https://www.facebook.com/dialog/oauth"
 SCOPES = [
@@ -112,14 +112,19 @@ class InstagramPublisher(SocialPublisher):
         )
 
     def validate_media(self, request: PublishRequest) -> None:
-        if not request.media_path.is_file() or request.media_path.suffix.lower() not in {
-            ".mp4",
-            ".mov",
-        }:
+        paths = request.media_paths or (request.media_path,)
+        urls = request.media_urls or ((request.media_url,) if request.media_url else ())
+        if request.format in {PublicationFormat.PHOTO, PublicationFormat.CAROUSEL}:
+            expected = 1 if request.format is PublicationFormat.PHOTO else None
+            if expected == 1 and len(paths) != 1 or request.format is PublicationFormat.CAROUSEL and not 2 <= len(paths) <= 10:
+                raise SocialPublisherError(SocialErrorCode.VALIDATION, "Instagram attend une photo ou un carrousel de 2 à 10 images.")
+            if any(not path.is_file() or path.suffix.lower() not in {".jpg", ".png"} for path in paths):
+                raise SocialPublisherError(SocialErrorCode.VALIDATION, "Instagram attend des images JPEG ou PNG.")
+        elif not request.media_path.is_file() or request.media_path.suffix.lower() not in {".mp4", ".mov"}:
             raise SocialPublisherError(
                 SocialErrorCode.VALIDATION, "Instagram attend un Reel MP4 ou MOV."
             )
-        if not request.media_url or not request.media_url.startswith("https://"):
+        if len(urls) != len(paths) or any(not url.startswith("https://") for url in urls):
             raise SocialPublisherError(
                 SocialErrorCode.VALIDATION,
                 "Instagram requiert une URL HTTPS temporaire pour le Reel.",
@@ -137,6 +142,8 @@ class InstagramPublisher(SocialPublisher):
 
     def publish(self, credentials, channel_external_id, request):
         self.validate_media(request)
+        if request.format in {PublicationFormat.PHOTO, PublicationFormat.CAROUSEL}:
+            return self._publish_images(credentials, channel_external_id, request)
         container_id = self._request(
             "POST",
             f"/{channel_external_id}/media",
@@ -179,6 +186,34 @@ class InstagramPublisher(SocialPublisher):
             media_id,
             "published",
             published_at=datetime.now(timezone.utc),
+            raw_response={"media_id": media_id, "container_id": container_id},
+        )
+
+    def _publish_images(self, credentials, channel_external_id, request):
+        caption = request.description or request.title
+        if request.format is PublicationFormat.PHOTO:
+            container_id = self._request(
+                "POST", f"/{channel_external_id}/media", credentials.access_token,
+                params={"image_url": request.media_urls[0], "caption": caption},
+            )["id"]
+        else:
+            children = [
+                self._request(
+                    "POST", f"/{channel_external_id}/media", credentials.access_token,
+                    params={"image_url": url, "is_carousel_item": "true"},
+                )["id"]
+                for url in request.media_urls
+            ]
+            container_id = self._request(
+                "POST", f"/{channel_external_id}/media", credentials.access_token,
+                params={"media_type": "CAROUSEL", "children": ",".join(children), "caption": caption},
+            )["id"]
+        media_id = self._request(
+            "POST", f"/{channel_external_id}/media_publish", credentials.access_token,
+            params={"creation_id": container_id},
+        )["id"]
+        return PublishResult(
+            media_id, "published", published_at=datetime.now(timezone.utc),
             raw_response={"media_id": media_id, "container_id": container_id},
         )
 
