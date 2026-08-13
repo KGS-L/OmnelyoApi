@@ -28,7 +28,7 @@ def setup_logging() -> None:
 def main() -> None:
     setup_logging()
     logger = logging.getLogger(__name__)
-    logger.info("=== Démarrage Robot Short YT ===")
+    logger.info("=== Démarrage ShortPilot ===")
     
     # Initialisation base de données
     init_db()

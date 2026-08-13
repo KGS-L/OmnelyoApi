@@ -1,4 +1,4 @@
-# Audit technique — Robot Short YT
+# Audit technique — ShortPilot Platform API
 
 Date de l'analyse : 13 août 2026
 

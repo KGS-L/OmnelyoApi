@@ -64,7 +64,7 @@ def _on_youtube_connected(user_id: int | None) -> None:
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Affiche le message d'accueil et d'aide."""
     help_text = (
-        "🤖 <b>Robot Short YT</b>\n\n"
+        "🤖 <b>ShortPilot</b>\n\n"
         "Je t'aide à créer et publier des shorts YouTube automatiquement.\n\n"
         "<b>Commandes disponibles :</b>\n"
         "• /connect_youtube — Connecter ta chaîne YouTube\n"

@@ -1,4 +1,9 @@
-# Robot Short Yt
+# ShortPilot Platform API
+
+[![CI](https://github.com/KGS-L/shortpilot-platform-api/actions/workflows/ci.yml/badge.svg)](https://github.com/KGS-L/shortpilot-platform-api/actions/workflows/ci.yml)
+
+Backend open source de **ShortPilot**, une plateforme d'automatisation de création,
+programmation et publication de vidéos courtes.
 
 Bot Telegram qui automatise la création et la publication de YouTube Shorts :
 tu envoies un lien de vidéo, le bot la découpe en plusieurs séquences, génère une
@@ -65,7 +70,7 @@ manipulation sur le serveur lui-même.
 ## 📁 Structure du projet
 
 ```
-RobotShortYt/
+shortpilot-platform-api/
 ├── main.py                    # point d'entrée (bot + serveur OAuth)
 ├── config.py                   # chargement de la configuration (.env)
 ├── Dockerfile
@@ -118,8 +123,8 @@ RobotShortYt/
 ### 1. Cloner le projet
 
 ```bash
-git clone https://github.com/ton-compte/RobotShortYt.git
-cd RobotShortYt
+git clone https://github.com/KGS-L/shortpilot-platform-api.git
+cd shortpilot-platform-api
 ```
 
 ### 2. Créer le bot Telegram

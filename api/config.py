@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class APISettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    app_name: str = "Robot Short YT API"
+    app_name: str = "ShortPilot Platform API"
     api_environment: str = "development"
     api_database_url: str = "postgresql+psycopg://robot:robot@localhost:5432/robot_short_yt"
     redis_url: str = "redis://localhost:6379/0"
