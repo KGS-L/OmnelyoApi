@@ -4,7 +4,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, field_validator, model_validator
 
-from api.models import ChannelPlatform, ChannelStatus, VideoStatus, WorkspaceRole
+from api.models import (
+    ChannelPlatform,
+    ChannelStatus,
+    JobStatus,
+    JobType,
+    VideoStatus,
+    WorkspaceRole,
+)
 
 
 class OTPRequest(BaseModel):
@@ -124,4 +131,36 @@ class VideoResponse(BaseModel):
     status: VideoStatus
     error_message: str | None
     created_at: datetime
+    updated_at: datetime
+
+
+class JobCreate(BaseModel):
+    type: JobType
+    video_id: uuid.UUID | None = None
+    payload: dict | None = None
+
+    @model_validator(mode="after")
+    def require_video_for_pipeline_job(self):
+        if self.type is not JobType.INGEST and self.video_id is None:
+            raise ValueError("Une vidéo est obligatoire pour ce type de job.")
+        return self
+
+
+class JobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    video_id: uuid.UUID | None
+    type: JobType
+    status: JobStatus
+    progress: int
+    attempts: int
+    max_attempts: int
+    payload: dict | None
+    result: dict | None
+    error_message: str | None
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
     updated_at: datetime

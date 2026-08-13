@@ -20,6 +20,7 @@ from api.models import (
     Video,
 )
 from api.routes.channels import _get_channel
+from api.routes.jobs import _ensure_video_in_workspace, _get_job
 from api.routes.videos import _get_video, delete_video
 
 
@@ -127,6 +128,25 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
                 self.db,
             )
         self.assertEqual(caught.exception.status_code, 409)
+
+    def test_job_query_cannot_cross_workspace_boundary(self):
+        job = Job(workspace_id=self.workspace_b.id, type=JobType.INGEST)
+        self.db.add(job)
+        self.db.flush()
+        with self.assertRaises(HTTPException) as caught:
+            _get_job(self.db, self.workspace_a.id, job.id)
+        self.assertEqual(caught.exception.status_code, 404)
+
+    def test_job_cannot_reference_video_from_another_workspace(self):
+        video = Video(
+            workspace_id=self.workspace_b.id,
+            source_url="https://example.com/foreign-source.mp4",
+        )
+        self.db.add(video)
+        self.db.flush()
+        with self.assertRaises(HTTPException) as caught:
+            _ensure_video_in_workspace(self.db, self.workspace_a.id, video.id)
+        self.assertEqual(caught.exception.status_code, 404)
 
 
 if __name__ == "__main__":
