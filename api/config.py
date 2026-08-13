@@ -30,6 +30,8 @@ class APISettings(BaseSettings):
     tiktok_client_key: str = ""
     tiktok_client_secret: str = ""
     tiktok_sandbox_mode: bool = True
+    # Domaine public R2 vérifié dans TikTok Developer, ex. https://media.example.com
+    tiktok_verified_media_base_url: str = ""
     r2_signed_url_ttl_seconds: int = 900
     video_upload_max_bytes: int = 500 * 1024 * 1024
     image_upload_max_bytes: int = 20 * 1024 * 1024

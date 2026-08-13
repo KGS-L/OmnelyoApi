@@ -189,7 +189,7 @@ La liste exhaustive et les valeurs d'exemple se trouvent dans
 | Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_LINK_TTL_SECONDS` |
 | OAuth social | `SOCIAL_CREDENTIALS_KEY`, `SOCIAL_OAUTH_CALLBACK_BASE_URL`, `SOCIAL_OAUTH_STATE_TTL_SECONDS` |
 | YouTube | `YOUTUBE_CLIENT_SECRETS_FILE` |
-| TikTok | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_SANDBOX_MODE` |
+| TikTok | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_SANDBOX_MODE`, `TIKTOK_VERIFIED_MEDIA_BASE_URL` |
 | Meta | `META_APP_ID`, `META_APP_SECRET`, `META_GRAPH_API_VERSION` |
 | Stockage R2 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_ENDPOINT_URL` |
 | Storytime | `LLM_PROVIDER` et les couples `<PROVIDER>_API_KEY` / `<PROVIDER>_MODEL` |
@@ -203,6 +203,14 @@ La liste exhaustive et les valeurs d'exemple se trouvent dans
 
 En production, utilise un secret `API_JWT_SECRET` aléatoire d'au moins 32
 caractères et laisse `EXPOSE_DEV_OTP=false`.
+
+Pour les photos TikTok, `TIKTOK_VERIFIED_MEDIA_BASE_URL` doit être le domaine
+HTTPS public relié au bucket R2, par exemple `https://media.example.com`. Ce
+domaine ou son préfixe doit être déclaré dans l'URL properties widget de
+TikTok Developer. Les objets doivent rester accessibles pendant au moins une
+heure, le temps que TikTok les récupère. Le mode TikTok `MEDIA_UPLOAD` ne
+supprime pas cette exigence pour les photos : il utilise également
+`PULL_FROM_URL`.
 
 ## Commandes Telegram
 

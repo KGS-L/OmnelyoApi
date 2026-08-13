@@ -98,12 +98,19 @@ def publish_video(job: Job, heartbeat) -> dict:
         for storage_key, media_path in zip(context.storage_keys, media_paths):
             download_from_r2(storage_key, media_path)
         media_urls: tuple[str, ...] = ()
-        if context.platform in {ChannelPlatform.INSTAGRAM, ChannelPlatform.TIKTOK}:
+        if context.platform is ChannelPlatform.INSTAGRAM:
             from core.storage_r2 import create_presigned_download_url
 
             media_urls = tuple(
                 create_presigned_download_url(key, settings.r2_signed_url_ttl_seconds)
                 for key in context.storage_keys
+            )
+        elif context.platform is ChannelPlatform.TIKTOK and context.format in {
+            PublicationFormat.PHOTO,
+            PublicationFormat.CAROUSEL,
+        }:
+            media_urls = _tiktok_media_urls(
+                context.storage_keys, settings.tiktok_verified_media_base_url
             )
         request = PublishRequest(
             media_path=media_paths[0],
@@ -344,6 +351,16 @@ def _result(publication_id: uuid.UUID, external_id: str) -> dict:
 def _require_lease(heartbeat, stage: str, progress: int | None = None) -> None:
     if not heartbeat(progress):
         raise RuntimeError(f"Lease du job perdue {stage}.")
+
+
+def _tiktok_media_urls(storage_keys: tuple[str, ...], base_url: str) -> tuple[str, ...]:
+    base = base_url.strip().rstrip("/")
+    if not base.startswith("https://"):
+        raise ValueError(
+            "TIKTOK_VERIFIED_MEDIA_BASE_URL doit contenir le domaine HTTPS public "
+            "vérifié dans TikTok Developer."
+        )
+    return tuple(f"{base}/{key.lstrip('/')}" for key in storage_keys)
 
 
 registry.register(JobType.PUBLISH, publish_video)

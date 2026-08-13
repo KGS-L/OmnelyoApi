@@ -13,11 +13,22 @@ from workers.handlers.publish import (
     _needs_refresh,
     _persist_reconciliation,
     _result,
+    _tiktok_media_urls,
 )
 from workers.registry import JobDeferred, registry
 
 
 class PublishHandlerTests(unittest.TestCase):
+    def test_tiktok_urls_use_verified_public_domain(self):
+        self.assertEqual(
+            _tiktok_media_urls(("workspaces/w/media-assets/a/source.jpg",), "https://media.test/"),
+            ("https://media.test/workspaces/w/media-assets/a/source.jpg",),
+        )
+
+    def test_tiktok_urls_reject_missing_verified_domain(self):
+        with self.assertRaisesRegex(ValueError, "TIKTOK_VERIFIED_MEDIA_BASE_URL"):
+            _tiktok_media_urls(("image.jpg",), "")
+
     def test_publish_handler_is_registered(self):
         self.assertIsNotNone(registry.get(JobType.PUBLISH))
 

@@ -245,6 +245,18 @@ def _validate_enqueue_target(
     ).one_or_none()
     if destination is None:
         raise HTTPException(status_code=409, detail="La destination sociale n'est pas connectée.")
+    if (
+        destination[2] is ChannelPlatform.TIKTOK
+        and publication.format in {PublicationFormat.PHOTO, PublicationFormat.CAROUSEL}
+        and not get_settings().tiktok_verified_media_base_url.strip().startswith("https://")
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "TikTok photo requiert TIKTOK_VERIFIED_MEDIA_BASE_URL, configuré "
+                "sur un domaine public vérifié dans TikTok Developer."
+            ),
+        )
     try:
         validate_publication_preflight(
             platform=destination[2],
