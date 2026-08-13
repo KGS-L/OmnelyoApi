@@ -43,6 +43,19 @@ services:
       redis: {condition: service_healthy}
     networks: [internal]
 
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL est obligatoire}
+      REDIS_URL: redis://redis:6379/0
+    command: python -m workers.main
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [internal]
+
   robot-short-yt:
     build: .
     restart: unless-stopped

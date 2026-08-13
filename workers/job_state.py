@@ -5,20 +5,25 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from api.models import Job, JobStatus
+from api.models import Job, JobStatus, JobType
 
 
-def claim_next_job(db: Session, worker_id: str) -> Job | None:
+def claim_next_job(
+    db: Session, worker_id: str, accepted_types: frozenset[JobType] | None = None
+) -> Job | None:
     """Réserve un job disponible sans bloquer les autres workers."""
+    if accepted_types is not None and not accepted_types:
+        return None
     now = datetime.now(timezone.utc)
-    job = db.scalar(
-        select(Job)
-        .where(
+    query = select(Job).where(
             Job.status == JobStatus.QUEUED,
             Job.available_at <= now,
             Job.attempts < Job.max_attempts,
         )
-        .order_by(Job.created_at)
+    if accepted_types is not None:
+        query = query.where(Job.type.in_(accepted_types))
+    job = db.scalar(
+        query.order_by(Job.created_at)
         .with_for_update(skip_locked=True)
         .limit(1)
     )

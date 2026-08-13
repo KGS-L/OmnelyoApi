@@ -1,18 +1,23 @@
 """Création et suivi des traitements vidéo persistants."""
 import uuid
+import logging
 from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from redis import Redis
 
 from api.database import get_db
 from api.dependencies import get_current_workspace_membership
 from api.models import Job, JobStatus, JobType, Video, WorkspaceMembership
 from api.schemas import JobCreate, JobResponse
+from api.config import APISettings, get_settings
+from workers.signals import notify_workers
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/jobs", tags=["jobs"])
+logger = logging.getLogger(__name__)
 
 
 def _get_job(db: Session, workspace_id: uuid.UUID, job_id: uuid.UUID) -> Job:
@@ -101,6 +106,7 @@ def get_job(
         WorkspaceMembership, Depends(get_current_workspace_membership)
     ],
     db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[APISettings, Depends(get_settings)],
 ) -> Job:
     return _get_job(db, workspace_id, job_id)
 
@@ -120,6 +126,14 @@ def create_job(
     db.add(job)
     db.commit()
     db.refresh(job)
+    notify_workers(
+        Redis.from_url(
+            settings.redis_url,
+            socket_connect_timeout=0.5,
+            socket_timeout=0.5,
+        ),
+        str(job.id),
+    )
     return job
 
 

@@ -288,6 +288,17 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
         self.assertEqual(job.status, JobStatus.SUCCEEDED)
         self.assertEqual(job.progress, 100)
 
+    def test_worker_without_handler_does_not_claim_job(self):
+        job = Job(workspace_id=self.workspace_a.id, type=JobType.RENDER)
+        self.db.add(job)
+        self.db.commit()
+        self.assertIsNone(
+            claim_next_job(self.db, "worker-without-handlers", frozenset())
+        )
+        self.db.refresh(job)
+        self.assertEqual(job.status, JobStatus.QUEUED)
+        self.assertEqual(job.attempts, 0)
+
     def test_stale_worker_job_is_requeued(self):
         stale_time = datetime.now(timezone.utc) - timedelta(minutes=10)
         job = Job(
