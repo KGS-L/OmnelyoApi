@@ -7,7 +7,7 @@ les OTP et, plus tard, la file de production.
 ## Démarrage local
 
 ```bash
-docker compose -f docker-compose.local.yml up -d postgres redis api
+docker compose up -d postgres redis api
 ```
 
 L'API est disponible sur `http://localhost:8000`, Swagger sur `/docs` et le schéma

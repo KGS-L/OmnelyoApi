@@ -1,0 +1,22 @@
+# S'applique automatiquement avec `docker compose up` en développement.
+services:
+  postgres:
+    ports: ["5432:5432"]
+  redis:
+    ports: ["6379:6379"]
+  api:
+    ports: ["8000:8000"]
+    volumes: [".:/app"]
+    command: >
+      sh -c "alembic upgrade head &&
+      uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload"
+  robot-short-yt:
+    ports: ["8420:8420"]
+    volumes:
+      - .:/app
+      - ./credentials:/app/credentials
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+      - ./db:/app/db
+    command: >
+      watchmedo auto-restart --patterns="*.py" --recursive -- python main.py

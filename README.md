@@ -152,7 +152,7 @@ cp .env.example .env
 ### 6. Lancer
 
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
 Vérifie les logs :
@@ -251,10 +251,12 @@ Aucun port du conteneur principal n'est exposé directement : seul Caddy est acc
 depuis l'extérieur (ports 80/443), ce qui limite la surface d'attaque.
 
 ```bash
-docker compose up -d --build     # démarrer
-docker compose logs -f            # suivre les logs
-docker compose down                # arrêter
-docker compose down -v             # arrêter + supprimer les volumes (⚠️ perte des certificats HTTPS)
+docker compose up -d --build       # développement (charge automatiquement override)
+docker compose logs -f             # suivre les logs de développement
+
+# Production : n'ajoute jamais docker-compose.override.yml
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
 ```
 
 Les dossiers `credentials/`, `storage/`, `logs/` et `db/` sont montés en volumes :
@@ -266,7 +268,7 @@ Le socle FastAPI/PostgreSQL/Redis est séparé du bot historique. Pour le lancer
 développement :
 
 ```bash
-docker compose -f docker-compose.local.yml up -d postgres redis api
+docker compose up -d postgres redis api
 ```
 
 La documentation interactive est disponible sur `http://localhost:8000/docs`.

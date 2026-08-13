@@ -1,42 +1,63 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-robot_short_yt}
+      POSTGRES_USER: ${POSTGRES_USER:-robot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est obligatoire}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-robot} -d ${POSTGRES_DB:-robot_short_yt}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [internal]
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL est obligatoire}
+      REDIS_URL: redis://redis:6379/0
+    command: >
+      sh -c "alembic upgrade head &&
+      uvicorn api.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [internal]
+
   robot-short-yt:
     build: .
-    container_name: robot-short-yt
     restart: unless-stopped
-    env_file:
-      - .env
+    env_file: [.env]
     volumes:
       - ./credentials:/app/credentials
       - ./storage:/app/storage
       - ./logs:/app/logs
       - ./db:/app/db
-      # Montage du fichier seul (pas du dossier). S'assurer qu'il existe : touch data.json
-      - ./data.json:/app/data.json
-    networks:
-      - internal
-
-  caddy:
-    image: caddy:2-alpine
-    container_name: robot-short-yt-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - robot-short-yt
-    networks:
-      - internal
-    profiles:
-      - prod   # ← ne démarre que si --profile prod
+    networks: [internal]
 
 networks:
   internal:
-    driver: bridge   # Réseau interne partagé entre le bot et Caddy
+    driver: bridge
 
 volumes:
-  caddy_data:
-  caddy_config:
+  postgres_data:
+  redis_data:
