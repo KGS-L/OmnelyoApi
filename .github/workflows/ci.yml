@@ -48,6 +48,16 @@ jobs:
         run: python -m compileall -q api billing bot core db scheduler tests
       - name: PostgreSQL migrations
         run: alembic upgrade head
+      - name: Create non-secret Compose env file
+        run: |
+          printf '%s\n' \
+            'POSTGRES_DB=robot_short_yt_test' \
+            'POSTGRES_USER=robot' \
+            'POSTGRES_PASSWORD=compose-validation-only' \
+            'API_DATABASE_URL=postgresql+psycopg://robot:compose-validation-only@postgres:5432/robot_short_yt_test' \
+            'API_ENVIRONMENT=test' \
+            'API_JWT_SECRET=ci-only-secret-with-at-least-32-characters' \
+            > .env
       - name: Validate Compose files
         run: |
           docker compose -f docker-compose.yml config --quiet
