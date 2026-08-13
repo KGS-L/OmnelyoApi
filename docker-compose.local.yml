@@ -1,4 +1,53 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: robot_short_yt
+      POSTGRES_USER: robot
+      POSTGRES_PASSWORD: robot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U robot -d robot_short_yt"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+
+  api:
+    build: .
+    env_file:
+      - .env
+    environment:
+      API_DATABASE_URL: postgresql+psycopg://robot:robot@postgres:5432/robot_short_yt
+      REDIS_URL: redis://redis:6379/0
+    command: >
+      sh -c "alembic upgrade head &&
+      uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - internal
+
   robot-short-yt:
     build: .
     container_name: robot-short-yt
@@ -30,3 +79,7 @@ services:
 networks:
   internal:
     driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

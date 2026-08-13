@@ -260,6 +260,20 @@ docker compose down -v             # arrêter + supprimer les volumes (⚠️ pe
 Les dossiers `credentials/`, `storage/`, `logs/` et `db/` sont montés en volumes :
 les données persistent entre les redéploiements.
 
+## 🌐 Backend SaaS
+
+Le socle FastAPI/PostgreSQL/Redis est séparé du bot historique. Pour le lancer en
+développement :
+
+```bash
+docker compose -f docker-compose.local.yml up -d postgres redis api
+```
+
+La documentation interactive est disponible sur `http://localhost:8000/docs`.
+Consulte [BACKEND_SAAS.md](BACKEND_SAAS.md) pour les routes d'authentification,
+les sessions et le modèle multi-tenant. Le bot utilise encore SQLite pendant la
+transition ; les comptes et workspaces web utilisent PostgreSQL.
+
 ## 🔒 Sécurité & bonnes pratiques
 
 - Ne commit jamais `.env` ni `credentials/client_secret.json` (déjà exclus via `.gitignore`/`.dockerignore`)

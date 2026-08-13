@@ -29,6 +29,16 @@ google-auth-httplib2>=0.2.0
 
 # --- DB ---
 SQLAlchemy>=2.0.32         # ORM léger sur SQLite
+psycopg[binary]>=3.2.0     # PostgreSQL du backend SaaS
+alembic>=1.13.2            # migrations PostgreSQL
+
+# --- API SaaS / authentification ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic-settings>=2.4.0
+PyJWT[crypto]>=2.9.0
+redis>=5.0.8
+email-validator>=2.2.0
 
 # --- Utilitaires ---
 python-dotenv>=1.0.1
