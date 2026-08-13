@@ -14,7 +14,7 @@ from api.dependencies import get_current_user, require_workspace_roles
 from api.integrations.social import SocialPublisherError, social_publishers
 from api.integrations.social_oauth import (
     SocialOAuthStateService,
-    persist_oauth_grant,
+    persist_oauth_grants,
 )
 from api.models import (
     Channel,
@@ -97,11 +97,11 @@ def finish_social_oauth(
         raise HTTPException(status_code=400, detail="État OAuth invalide ou expiré.")
     publisher = _publisher(platform)
     try:
-        grant = publisher.exchange_code(code, _callback_uri(settings, platform))
-        connection, channels = persist_oauth_grant(
+        grants = publisher.exchange_code(code, _callback_uri(settings, platform))
+        connections, channels = persist_oauth_grants(
             db,
             pending,
-            grant,
+            grants,
             SocialCredentialCipher(settings.social_credentials_key),
         )
     except SocialPublisherError as exc:
@@ -109,7 +109,7 @@ def finish_social_oauth(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return SocialOAuthCallbackResponse(connection=connection, channels=channels)
+    return SocialOAuthCallbackResponse(connections=connections, channels=channels)
 
 
 @workspace_router.get("", response_model=list[SocialConnectionResponse])

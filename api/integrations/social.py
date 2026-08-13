@@ -87,8 +87,8 @@ class SocialPublisher(ABC):
         """Retourne l'URL OAuth du fournisseur."""
 
     @abstractmethod
-    def exchange_code(self, code: str, redirect_uri: str) -> OAuthGrant:
-        """Échange le code temporaire et retourne des données normalisées."""
+    def exchange_code(self, code: str, redirect_uri: str) -> list[OAuthGrant]:
+        """Échange le code et retourne un grant indépendant par compte distant."""
 
     @abstractmethod
     def list_channels(self, credentials: PublisherCredentials) -> list[SocialChannel]:

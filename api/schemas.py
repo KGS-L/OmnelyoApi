@@ -119,7 +119,7 @@ class SocialConnectionResponse(BaseModel):
 
 
 class SocialOAuthCallbackResponse(BaseModel):
-    connection: SocialConnectionResponse
+    connections: list[SocialConnectionResponse]
     channels: list[ChannelResponse]
 
 

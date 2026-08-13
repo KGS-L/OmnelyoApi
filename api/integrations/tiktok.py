@@ -38,7 +38,7 @@ class TikTokPublisher(SocialPublisher):
             "response_type": "code", "redirect_uri": redirect_uri, "state": state,
         })
 
-    def exchange_code(self, code: str, redirect_uri: str) -> OAuthGrant:
+    def exchange_code(self, code: str, redirect_uri: str) -> list[OAuthGrant]:
         self._configured()
         payload = self._request("POST", "/v2/oauth/token/", data={
             "client_key": self.client_key, "client_secret": self.client_secret,
@@ -50,11 +50,11 @@ class TikTokPublisher(SocialPublisher):
             datetime.now(timezone.utc) + timedelta(seconds=payload["expires_in"]),
         )
         channels = self.list_channels(credentials)
-        return OAuthGrant(
+        return [OAuthGrant(
             provider_account_id=payload["open_id"], access_token=credentials.access_token,
             refresh_token=credentials.refresh_token, scopes=credentials.scopes,
             expires_at=credentials.expires_at, channels=channels,
-        )
+        )]
 
     def list_channels(self, credentials: PublisherCredentials) -> list[SocialChannel]:
         data = self._request(

@@ -74,6 +74,8 @@ def persist_oauth_grant(
     pending: PendingSocialOAuth,
     grant: OAuthGrant,
     cipher: SocialCredentialCipher,
+    *,
+    commit: bool = True,
 ) -> tuple[SocialConnection, list[Channel]]:
     membership = db.scalar(
         select(WorkspaceMembership.id).where(
@@ -142,8 +144,38 @@ def persist_oauth_grant(
             channel.avatar_url = remote.avatar_url
             channel.status = ChannelStatus.ACTIVE
         channels.append(channel)
+    if commit:
+        db.commit()
+        db.refresh(connection)
+        for channel in channels:
+            db.refresh(channel)
+    else:
+        db.flush()
+    return connection, channels
+
+
+def persist_oauth_grants(
+    db: Session,
+    pending: PendingSocialOAuth,
+    grants: list[OAuthGrant],
+    cipher: SocialCredentialCipher,
+) -> tuple[list[SocialConnection], list[Channel]]:
+    if not grants:
+        raise ValueError("Le fournisseur n'a retourné aucun compte accessible.")
+    provider_ids = [grant.provider_account_id for grant in grants]
+    if len(provider_ids) != len(set(provider_ids)):
+        raise ValueError("Le fournisseur a retourné des comptes dupliqués.")
+    connections: list[SocialConnection] = []
+    channels: list[Channel] = []
+    for grant in grants:
+        connection, grant_channels = persist_oauth_grant(
+            db, pending, grant, cipher, commit=False
+        )
+        connections.append(connection)
+        channels.extend(grant_channels)
     db.commit()
-    db.refresh(connection)
+    for connection in connections:
+        db.refresh(connection)
     for channel in channels:
         db.refresh(channel)
-    return connection, channels
+    return connections, channels

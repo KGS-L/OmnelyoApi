@@ -62,7 +62,7 @@ class YouTubePublisher(SocialPublisher):
         )
         return url
 
-    def exchange_code(self, code: str, redirect_uri: str) -> OAuthGrant:
+    def exchange_code(self, code: str, redirect_uri: str) -> list[OAuthGrant]:
         flow = self._flow(redirect_uri)
         try:
             flow.fetch_token(code=code)
@@ -81,14 +81,14 @@ class YouTubePublisher(SocialPublisher):
                 SocialErrorCode.AUTHORIZATION,
                 "Aucune chaîne YouTube accessible n'a été trouvée.",
             )
-        return OAuthGrant(
+        return [OAuthGrant(
             provider_account_id=channels[0].external_id,
             access_token=normalized.access_token,
             refresh_token=normalized.refresh_token,
             scopes=normalized.scopes,
             expires_at=normalized.expires_at,
             channels=channels,
-        )
+        )]
 
     def list_channels(self, credentials: PublisherCredentials) -> list[SocialChannel]:
         try:

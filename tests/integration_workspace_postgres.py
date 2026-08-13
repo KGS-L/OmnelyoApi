@@ -18,7 +18,11 @@ from api.integrations.telegram import (
     revoke_telegram_account,
 )
 from api.integrations.social import OAuthGrant, SocialChannel
-from api.integrations.social_oauth import PendingSocialOAuth, persist_oauth_grant
+from api.integrations.social_oauth import (
+    PendingSocialOAuth,
+    persist_oauth_grant,
+    persist_oauth_grants,
+)
 from api.models import (
     Channel,
     ChannelPlatform,
@@ -146,6 +150,43 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
         self.assertEqual(connection.scopes, ["content_publish"])
         self.assertEqual(channels[0].workspace_id, self.workspace_a.id)
         self.assertEqual(channels[0].connection_id, connection.id)
+
+    def test_oauth_callback_persists_one_connection_per_remote_account(self):
+        cipher = SocialCredentialCipher(Fernet.generate_key().decode("ascii"))
+        connections, channels = persist_oauth_grants(
+            self.db,
+            PendingSocialOAuth(
+                user_id=self.user_a.id,
+                workspace_id=self.workspace_a.id,
+                platform=ChannelPlatform.FACEBOOK,
+            ),
+            [
+                OAuthGrant(
+                    provider_account_id="page-a",
+                    access_token="token-a",
+                    refresh_token=None,
+                    scopes=["pages_manage_posts"],
+                    expires_at=None,
+                    channels=[SocialChannel(external_id="page-a", name="Page A")],
+                ),
+                OAuthGrant(
+                    provider_account_id="page-b",
+                    access_token="token-b",
+                    refresh_token=None,
+                    scopes=["pages_manage_posts"],
+                    expires_at=None,
+                    channels=[SocialChannel(external_id="page-b", name="Page B")],
+                ),
+            ],
+            cipher,
+        )
+        self.assertEqual(len(connections), 2)
+        self.assertEqual(len(channels), 2)
+        self.assertNotEqual(connections[0].id, connections[1].id)
+        self.assertEqual(
+            cipher.decrypt(connections[0].access_token_encrypted), "token-a"
+        )
+        self.assertEqual(channels[1].connection_id, connections[1].id)
 
     def test_ready_publication_is_enqueued_only_once(self):
         cipher = SocialCredentialCipher(Fernet.generate_key().decode("ascii"))
