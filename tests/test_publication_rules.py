@@ -11,6 +11,7 @@ from api.models import PublicationStatus
 from api.routes.publications import cancel_publication_record, update_publication_record
 from api.schemas import (
     PublicationBatchCreate,
+    PublicationBatchPublish,
     PublicationCreate,
     PublicationDestinationCreate,
     PublicationUpdate,
@@ -46,6 +47,13 @@ class PublicationSchemaTests(unittest.TestCase):
                     PublicationDestinationCreate(channel_id=channel_id, title="YouTube"),
                     PublicationDestinationCreate(channel_id=channel_id, title="Doublon"),
                 ],
+            )
+
+    def test_batch_publish_rejects_duplicate_publication(self):
+        publication_id = uuid.uuid4()
+        with self.assertRaises(ValueError):
+            PublicationBatchPublish(
+                publication_ids=[publication_id, publication_id]
             )
 
 

@@ -249,6 +249,16 @@ class PublicationBatchCreate(BaseModel):
         return self
 
 
+class PublicationBatchPublish(BaseModel):
+    publication_ids: list[uuid.UUID] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def require_unique_publications(self):
+        if len(self.publication_ids) != len(set(self.publication_ids)):
+            raise ValueError("Chaque publication ne peut être mise en file qu'une fois.")
+        return self
+
+
 class PublicationUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None

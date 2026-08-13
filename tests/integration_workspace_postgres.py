@@ -39,6 +39,7 @@ from api.routes.publications import (
     _ensure_targets_in_workspace,
     _get_publication,
     enqueue_publication_record,
+    enqueue_batch_publication_records,
     create_batch_publication_records,
 )
 from api.schemas import PublicationBatchCreate, PublicationDestinationCreate
@@ -280,6 +281,40 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
             )
         )
         self.assertEqual(count_after, count_before)
+        with self.assertRaises(HTTPException):
+            enqueue_batch_publication_records(
+                self.db,
+                self.workspace_a.id,
+                [publications[0].id, uuid.uuid4()],
+            )
+        self.assertEqual(
+            len(
+                list(
+                    self.db.scalars(
+                        select(Job).where(
+                            Job.workspace_id == self.workspace_a.id,
+                            Job.video_id == video.id,
+                            Job.type == JobType.PUBLISH,
+                        )
+                    )
+                )
+            ),
+            0,
+        )
+        jobs = enqueue_batch_publication_records(
+            self.db,
+            self.workspace_a.id,
+            [publications[0].id, publications[1].id],
+        )
+        replayed = enqueue_batch_publication_records(
+            self.db,
+            self.workspace_a.id,
+            [publications[0].id, publications[1].id],
+        )
+        self.assertEqual(len(jobs), 2)
+        self.assertNotEqual(jobs[0].id, jobs[1].id)
+        self.assertEqual([job.id for job in replayed], [job.id for job in jobs])
+        self.assertTrue(all(job.type is JobType.PUBLISH for job in jobs))
 
     def test_video_query_cannot_cross_workspace_boundary(self):
         video = Video(

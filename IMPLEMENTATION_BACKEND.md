@@ -167,8 +167,8 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] L'API vérifie que chaque destination est connectée et autorisée.
 - [x] L'utilisateur peut personnaliser légende, visibilité et horaire par plateforme.
 - [ ] L'API valide le média et les options selon chaque destination avant facturation ou mise en file.
-- [ ] Un job parent orchestre les rendus ; un job de publication séparé est créé par destination.
-- [ ] Un échec sur une plateforme ne bloque pas les autres.
+- [~] Un job parent orchestre les rendus ; les jobs de publication séparés par destination sont terminés, orchestration parente restante.
+- [x] Un échec sur une plateforme ne bloque pas les autres.
 
 ## 5. Ordre d'implémentation recommandé
 

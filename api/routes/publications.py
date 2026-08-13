@@ -27,6 +27,7 @@ from api.models import (
 from api.schemas import (
     JobResponse,
     PublicationBatchCreate,
+    PublicationBatchPublish,
     PublicationCreate,
     PublicationResponse,
     PublicationUpdate,
@@ -181,26 +182,14 @@ def cancel_publication_record(publication: Publication) -> None:
 def enqueue_publication_record(
     db: Session, workspace_id: uuid.UUID, publication: Publication
 ) -> Job:
-    publication = db.scalar(
-        select(Publication)
-        .where(
-            Publication.id == publication.id,
-            Publication.workspace_id == workspace_id,
-        )
-        .with_for_update()
-    )
-    if publication is None:
-        raise HTTPException(status_code=404, detail="Publication introuvable.")
-    if publication.job_id is not None:
-        existing = db.get(Job, publication.job_id)
-        if existing is not None and existing.status in {
-            JobStatus.QUEUED,
-            JobStatus.RUNNING,
-            JobStatus.SUCCEEDED,
-        }:
-            return existing
-    if publication.status not in EDITABLE_STATUSES | {PublicationStatus.FAILED}:
-        raise HTTPException(status_code=409, detail="Cette publication ne peut pas être mise en file.")
+    return enqueue_batch_publication_records(
+        db, workspace_id, [publication.id]
+    )[0]
+
+
+def _validate_enqueue_target(
+    db: Session, workspace_id: uuid.UUID, publication: Publication
+) -> None:
     video = db.scalar(
         select(Video).where(
             Video.id == publication.video_id,
@@ -209,29 +198,81 @@ def enqueue_publication_record(
     )
     if video is None or not video.rendered_storage_key:
         raise HTTPException(status_code=409, detail="La vidéo doit d'abord être rendue.")
-    channel = db.scalar(
-        select(Channel).where(
+    destination = db.execute(
+        select(Channel.id, SocialConnection.id)
+        .join(SocialConnection, SocialConnection.id == Channel.connection_id)
+        .where(
             Channel.id == publication.channel_id,
             Channel.workspace_id == workspace_id,
             Channel.status == ChannelStatus.ACTIVE,
+            SocialConnection.workspace_id == workspace_id,
+            SocialConnection.platform == Channel.platform,
+            SocialConnection.status == SocialConnectionStatus.ACTIVE,
+        )
+    ).one_or_none()
+    if destination is None:
+        raise HTTPException(status_code=409, detail="La destination sociale n'est pas connectée.")
+
+
+def enqueue_batch_publication_records(
+    db: Session,
+    workspace_id: uuid.UUID,
+    publication_ids: list[uuid.UUID],
+) -> list[Job]:
+    locked = list(
+        db.scalars(
+            select(Publication)
+            .where(
+                Publication.workspace_id == workspace_id,
+                Publication.id.in_(publication_ids),
+            )
+            .order_by(Publication.id)
+            .with_for_update()
         )
     )
-    if channel is None or channel.connection_id is None:
-        raise HTTPException(status_code=409, detail="La destination sociale n'est pas connectée.")
-    job = Job(
-        workspace_id=workspace_id,
-        video_id=publication.video_id,
-        type=JobType.PUBLISH,
-        payload={"publication_id": str(publication.id)},
-    )
-    db.add(job)
-    db.flush()
-    publication.job_id = job.id
-    publication.status = PublicationStatus.PUBLISHING
-    publication.error_message = None
+    by_id = {publication.id: publication for publication in locked}
+    if set(by_id) != set(publication_ids):
+        raise HTTPException(status_code=404, detail="Une publication est introuvable.")
+    jobs_by_publication: dict[uuid.UUID, Job] = {}
+    to_create: list[Publication] = []
+    for publication_id in publication_ids:
+        publication = by_id[publication_id]
+        existing = db.get(Job, publication.job_id) if publication.job_id else None
+        if existing is not None and existing.status in {
+            JobStatus.QUEUED,
+            JobStatus.RUNNING,
+            JobStatus.SUCCEEDED,
+        }:
+            jobs_by_publication[publication_id] = existing
+            continue
+        allowed = EDITABLE_STATUSES | {PublicationStatus.FAILED}
+        if existing is not None and existing.status is JobStatus.CANCELLED:
+            allowed = allowed | {PublicationStatus.PUBLISHING}
+        if publication.status not in allowed:
+            raise HTTPException(
+                status_code=409,
+                detail="Une publication ne peut pas être mise en file.",
+            )
+        _validate_enqueue_target(db, workspace_id, publication)
+        to_create.append(publication)
+    for publication in to_create:
+        job = Job(
+            workspace_id=workspace_id,
+            video_id=publication.video_id,
+            type=JobType.PUBLISH,
+            payload={"publication_id": str(publication.id)},
+        )
+        db.add(job)
+        db.flush()
+        publication.job_id = job.id
+        publication.status = PublicationStatus.PUBLISHING
+        publication.error_message = None
+        jobs_by_publication[publication.id] = job
     db.commit()
-    db.refresh(job)
-    return job
+    jobs = [jobs_by_publication[publication_id] for publication_id in publication_ids]
+    for job in jobs:
+        db.refresh(job)
+    return jobs
 
 
 @router.get("", response_model=list[PublicationResponse])
@@ -313,6 +354,29 @@ def create_batch_publications(
     db: Annotated[Session, Depends(get_db)],
 ) -> list[Publication]:
     return create_batch_publication_records(db, workspace_id, payload)
+
+
+@router.post("/batch/publish", response_model=list[JobResponse])
+def enqueue_batch_publications(
+    workspace_id: uuid.UUID,
+    payload: PublicationBatchPublish,
+    membership: Annotated[
+        WorkspaceMembership, Depends(get_current_workspace_membership)
+    ],
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[APISettings, Depends(get_settings)],
+) -> list[Job]:
+    jobs = enqueue_batch_publication_records(
+        db, workspace_id, payload.publication_ids
+    )
+    redis = Redis.from_url(
+        settings.redis_url,
+        socket_connect_timeout=0.5,
+        socket_timeout=0.5,
+    )
+    for job in jobs:
+        notify_workers(redis, str(job.id))
+    return jobs
 
 
 @router.patch("/{publication_id}", response_model=PublicationResponse)
