@@ -274,9 +274,22 @@ Plus de détails dans [BACKEND_SAAS.md](BACKEND_SAAS.md).
 
 ## Facturation
 
-`BillingService` et le paiement manuel SQLite sont des prototypes historiques :
-ils ne définissent ni les prix ni les crédits du produit final. La facturation
-n'est exposée par aucune route FastAPI et aucun webhook automatique n'est activé.
+La couche PostgreSQL de paiement expose un checkout commun pour Dodo Payments et
+MoneyFusion. Dodo gère les abonnements et vérifie cryptographiquement ses
+webhooks. MoneyFusion est limité aux achats ponctuels XOF : chaque notification
+est confirmée côté serveur avec `get_payment(token)` avant tout changement local.
+Les prix viennent exclusivement de `provider_price_mappings` et jamais du client.
+
+Routes disponibles lorsque `BILLING_ENABLED=true` :
+
+- `POST /v1/workspaces/{workspace_id}/billing/checkout` ;
+- `POST /v1/workspaces/{workspace_id}/billing/portal` pour Dodo ;
+- `POST /v1/billing/webhooks/dodo` ;
+- `POST /v1/billing/webhooks/moneyfusion` ;
+- `GET|POST /v1/billing/callbacks/moneyfusion`.
+
+Cette couche enregistre et valide les paiements, mais n'accorde pas encore de
+crédits et n'applique pas encore les quotas du produit final.
 
 L'atelier décrit dans [IMPLEMENTATION_BACKEND.md](IMPLEMENTATION_BACKEND.md) doit
 d'abord fixer la cible, l'unité de crédit, les quotas, les remboursements et les
@@ -289,7 +302,7 @@ Exécuter la suite de CI localement :
 
 ```bash
 pip install -r requirements-ci.txt
-python -B -m unittest discover -s tests -v
+python -m pytest -q
 python -m compileall -q api billing bot core db scheduler workers tests migrations
 ```
 
@@ -336,7 +349,7 @@ documentés dans [CI_CD.md](CI_CD.md).
 - configure `SOCIAL_CREDENTIALS_KEY` avec une clé Fernet stable et secrète ;
 - limite les rôles autorisés à consulter le journal d'audit ;
 - conserve les buckets R2 privés et utilise uniquement les URLs signées ;
-- valide cryptographiquement les futurs webhooks de paiement ;
+- valide cryptographiquement les webhooks Dodo et confirme les notifications MoneyFusion via son API ;
 - ne crédite jamais un paiement depuis une simple capture d'écran ;
 - sauvegarde PostgreSQL et les objets R2 avant chaque migration importante.
 
@@ -353,7 +366,7 @@ documentés dans [CI_CD.md](CI_CD.md).
 - [x] Docker Compose, CI et déploiement VPS ;
 - [ ] fournisseur d'emails transactionnels ;
 - [ ] atelier business model, quotas et règles de crédits ;
-- [ ] endpoints de facturation et prestataire de paiement validé ;
+- [x] endpoints de paiement Dodo/MoneyFusion et webhooks idempotents ;
 - [ ] migration et validation des données SQLite historiques ;
 - [ ] métriques, alertes, rétention et sauvegardes testées ;
 - [ ] frontend SaaS.

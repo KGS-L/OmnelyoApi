@@ -425,3 +425,157 @@ class Publication(Base):
     video: Mapped[Video] = relationship(back_populates="publications")
     channel: Mapped[Channel] = relationship(back_populates="publications")
     job: Mapped[Job | None] = relationship(back_populates="publications")
+
+
+# --- Billing (provider-neutral, PostgreSQL source of truth) ---
+
+class Provider(str, enum.Enum):
+    DODO = "dodo"
+    MONEYFUSION = "moneyfusion"
+
+
+def _enum_values(enum_class):
+    return [member.value for member in enum_class]
+
+
+class ProductType(str, enum.Enum):
+    SUBSCRIPTION = "subscription"
+    CREDITS = "credits"
+
+
+class BillingInterval(str, enum.Enum):
+    MONTH = "month"
+    YEAR = "year"
+
+
+class PaymentIntentStatus(str, enum.Enum):
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELED = "canceled"
+    REFUNDED = "refunded"
+
+
+class SubscriptionStatus(str, enum.Enum):
+    ACTIVE = "active"
+    PAST_DUE = "past_due"
+    CANCELED = "canceled"
+    EXPIRED = "expired"
+    ON_HOLD = "on_hold"
+
+
+class PaymentIntent(Base):
+    __tablename__ = "payment_intents"
+    __table_args__ = (
+        UniqueConstraint("provider", "checkout_session_id", name="uq_payment_intents_provider_checkout_session"),
+        UniqueConstraint("provider", "payment_id", name="uq_payment_intents_provider_payment"),
+        UniqueConstraint("workspace_id", "provider", "idempotency_key", name="uq_payment_intents_ws_provider_idem"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[Provider] = mapped_column(Enum(Provider, name="billing_provider", values_callable=_enum_values))
+    purchase_code: Mapped[str] = mapped_column(String(64), index=True)  # e.g., CREATOR_MONTHLY | PRO_MONTHLY | TOPUP
+    product_type: Mapped[ProductType] = mapped_column(Enum(ProductType, name="billing_product_type", values_callable=_enum_values))
+    expected_amount_minor: Mapped[int] = mapped_column(Integer)
+    expected_currency: Mapped[str] = mapped_column(String(3))
+    external_product_id: Mapped[str | None] = mapped_column(String(255))
+    external_price_id: Mapped[str | None] = mapped_column(String(255))
+    customer_email: Mapped[str | None] = mapped_column(String(320))
+    # Canonical provider identifiers kept distinct
+    checkout_session_id: Mapped[str | None] = mapped_column(String(255))
+    payment_id: Mapped[str | None] = mapped_column(String(255))
+    subscription_id: Mapped[str | None] = mapped_column(String(255))
+    customer_id: Mapped[str | None] = mapped_column(String(255))
+    checkout_url: Mapped[str | None] = mapped_column(String(2048))
+    status: Mapped[PaymentIntentStatus] = mapped_column(
+        Enum(PaymentIntentStatus, name="payment_intent_status", values_callable=_enum_values), default=PaymentIntentStatus.PENDING, index=True
+    )
+    idempotency_key: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProviderEventStatus(str, enum.Enum):
+    RECEIVED = "received"
+    PROCESSED = "processed"
+    DEFERRED = "deferred"
+    FAILED = "failed"
+
+
+class ProviderEvent(Base):
+    __tablename__ = "provider_events"
+    __table_args__ = (
+        UniqueConstraint("provider", "external_event_id", name="uq_provider_events_provider_event"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider: Mapped[Provider] = mapped_column(Enum(Provider, name="provider_events_provider", values_callable=_enum_values))
+    external_event_id: Mapped[str] = mapped_column(String(255), index=True)
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    # Canonical identifiers captured from the event for correlation and audit
+    checkout_session_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    payment_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    subscription_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    customer_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    provider_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    status: Mapped[ProviderEventStatus] = mapped_column(
+        Enum(ProviderEventStatus, name="provider_event_status", values_callable=_enum_values), default=ProviderEventStatus.RECEIVED, index=True
+    )
+    payload: Mapped[dict | None] = mapped_column(JSON)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_message: Mapped[str | None] = mapped_column(String(255))
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    __table_args__ = (
+        UniqueConstraint("provider", "external_subscription_id", name="uq_subscriptions_provider_external"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[Provider] = mapped_column(Enum(Provider, name="subscriptions_provider", values_callable=_enum_values))
+    external_subscription_id: Mapped[str] = mapped_column(String(255))
+    internal_plan_code: Mapped[str] = mapped_column(String(64), index=True)  # e.g., CREATOR | PRO
+    status: Mapped[SubscriptionStatus] = mapped_column(
+        Enum(SubscriptionStatus, name="subscription_status", values_callable=_enum_values), default=SubscriptionStatus.ACTIVE, index=True
+    )
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    # Track latest provider identifiers and ordering protection
+    latest_payment_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    latest_checkout_session_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    customer_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    last_provider_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProviderPriceMapping(Base):
+    __tablename__ = "provider_price_mappings"
+    __table_args__ = (
+        UniqueConstraint("provider", "internal_plan_code", "interval", name="uq_provider_price_mappings_unique"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider: Mapped[Provider] = mapped_column(Enum(Provider, name="price_mappings_provider", values_callable=_enum_values))
+    internal_plan_code: Mapped[str] = mapped_column(String(64), index=True)  # e.g., CREATOR, PRO, TOPUP
+    product_type: Mapped[ProductType] = mapped_column(Enum(ProductType, name="price_mappings_product_type", values_callable=_enum_values))
+    interval: Mapped[BillingInterval | None] = mapped_column(
+        Enum(BillingInterval, name="price_mappings_interval", values_callable=_enum_values), nullable=True
+    )
+    external_product_id: Mapped[str] = mapped_column(String(255))
+    external_price_id: Mapped[str | None] = mapped_column(String(255))
+    # Server-known expected pricing for validation (minor units & 3-letter currency)
+    expected_amount_minor: Mapped[int] = mapped_column(Integer)
+    expected_currency: Mapped[str] = mapped_column(String(3))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

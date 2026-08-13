@@ -47,3 +47,7 @@ python-dotenv>=1.0.1
 requests>=2.32.0
 APScheduler>=3.10.4        # scheduling / cron interne
 watchdog>=4.0.0            # hot-reload en développement (watchmedo)
+
+# --- Paiements (Dodo Payments SDK) ---
+dodopayments>=1.111.0,<1.112
+apiMoneyFusion>=0.1.4,<0.2

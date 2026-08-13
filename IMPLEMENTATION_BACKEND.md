@@ -72,12 +72,12 @@ crédit ou quota ne doit être considéré comme validé.
 
 ### Travaux techniques après décision
 
-- [ ] Migrer plans, paiements, ledger et abonnements de SQLite vers PostgreSQL.
+- [~] Migrer plans, paiements, ledger et abonnements de SQLite vers PostgreSQL (paiements, mappings et abonnements techniques terminés ; plans produit et ledger restants).
 - [ ] Ajouter un ledger immuable avec crédits positifs et débits négatifs.
 - [ ] Réserver les crédits avant un job, puis régulariser selon le coût réel.
-- [ ] Garantir l'idempotence des débits, remboursements et webhooks.
-- [ ] Ajouter les routes de catalogue, solde, checkout et historique.
-- [ ] Ajouter un fournisseur de paiement validé et ses webhooks signés.
+- [~] Garantir l'idempotence des débits, remboursements et webhooks (webhooks terminés ; ledger restant).
+- [~] Ajouter les routes de catalogue, solde, checkout et historique (checkout terminé ; catalogue, solde et historique restants).
+- [x] Ajouter Dodo Payments (abonnements/international) et MoneyFusion (paiements ponctuels XOF), avec confirmation serveur des notifications non signées MoneyFusion.
 
 ## 3. Liaison du compte web à Telegram
 
@@ -224,9 +224,9 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 ### Phase 6 — Business model et paiement
 
 - [ ] Organiser et valider l'atelier de la section 2.
-- [ ] Implémenter le modèle retenu dans PostgreSQL.
+- [~] Implémenter le modèle retenu dans PostgreSQL (socle paiements, abonnements et mappings terminé ; règles commerciales restantes).
 - [ ] Ajouter quotas avant de permettre une utilisation publique.
-- [ ] Activer paiements et webhooks seulement après tests d'idempotence et de sécurité.
+- [x] Implémenter les checkouts et webhooks Dodo/MoneyFusion derrière `BILLING_ENABLED`, avec tests PostgreSQL d'idempotence et de sécurité.
 
 ### Phase 7 — Production
 
@@ -239,5 +239,6 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 ## 6. Prochaine étape concrète
 
-Organiser maintenant l'atelier business model de la section 2. Aucun modèle de
-crédits, quota ou paiement ne doit être implémenté avant validation de ses choix.
+Organiser maintenant l'atelier business model de la section 2. Le transport des
+paiements est prêt, mais l'attribution des plans, crédits et quotas reste
+volontairement inactive jusqu'à validation des règles commerciales.

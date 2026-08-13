@@ -14,3 +14,9 @@ google-auth[requests]>=2.0.0
 google-api-python-client>=2.140.0
 google-auth-oauthlib>=1.2.1
 requests>=2.32.0
+# Dodo Payments SDK (minimum compatible version)
+dodopayments>=1.111.0,<1.112
+apiMoneyFusion>=0.1.4,<0.2
+# Test client dependency required by starlette.testclient
+httpx2>=0.3.0
+pytest>=8.3.0
