@@ -21,6 +21,11 @@ def upgrade() -> None:
     payout_status = postgresql.ENUM("pending", "processing", "paid", "failed", name="partner_payout_status", create_type=False)
     for enum_type in (partner_status, commission_status, payout_status):
         enum_type.create(op.get_bind(), checkfirst=True)
+    fulfillment_status = postgresql.ENUM("applied", "refunded", name="fulfillment_status", create_type=False)
+    fulfillment_provider = postgresql.ENUM("dodo", "moneyfusion", name="payment_fulfillment_provider", create_type=False)
+    fulfillment_status.create(op.get_bind(), checkfirst=True)
+    fulfillment_provider.create(op.get_bind(), checkfirst=True)
+    op.add_column("provider_price_mappings", sa.Column("credits_granted", sa.Integer()))
 
     op.create_table(
         "partner_profiles",
@@ -126,11 +131,30 @@ def upgrade() -> None:
 
     op.execute("UPDATE billing_plans SET publications_monthly_limit = 100 WHERE code = 'CREATOR'")
     op.execute("UPDATE billing_plans SET publications_monthly_limit = 500 WHERE code = 'PRO'")
+    op.create_table(
+        "payment_fulfillments",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("payment_intent_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("payment_intents.id", ondelete="RESTRICT"), nullable=False),
+        sa.Column("workspace_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("provider", fulfillment_provider, nullable=False),
+        sa.Column("provider_payment_id", sa.String(255), nullable=False),
+        sa.Column("purchase_code", sa.String(64), nullable=False),
+        sa.Column("plan_code", sa.String(32)),
+        sa.Column("credits_granted", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("status", fulfillment_status, server_default="applied", nullable=False),
+        sa.Column("applied_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("refunded_at", sa.DateTime(timezone=True)),
+        sa.UniqueConstraint("provider", "provider_payment_id", name="uq_payment_fulfillment_provider_payment"),
+    )
+    for column in ("payment_intent_id", "workspace_id", "purchase_code", "plan_code", "status"):
+        op.create_index(f"ix_payment_fulfillments_{column}", "payment_fulfillments", [column])
 
 
 def downgrade() -> None:
     op.execute("UPDATE billing_plans SET publications_monthly_limit = 120 WHERE code = 'CREATOR'")
     op.execute("UPDATE billing_plans SET publications_monthly_limit = 800 WHERE code = 'PRO'")
+    op.drop_table("payment_fulfillments")
+    op.drop_column("provider_price_mappings", "credits_granted")
     for table in ("partner_commissions", "partner_payouts", "referral_attributions", "promo_codes", "partner_profiles"):
         if table == "referral_attributions":
             for column in ("referral_attribution_id", "promo_code_id"):
@@ -141,3 +165,5 @@ def downgrade() -> None:
     postgresql.ENUM(name="partner_payout_status").drop(op.get_bind(), checkfirst=True)
     postgresql.ENUM(name="partner_commission_status").drop(op.get_bind(), checkfirst=True)
     postgresql.ENUM(name="partner_status").drop(op.get_bind(), checkfirst=True)
+    postgresql.ENUM(name="payment_fulfillment_provider").drop(op.get_bind(), checkfirst=True)
+    postgresql.ENUM(name="fulfillment_status").drop(op.get_bind(), checkfirst=True)

@@ -32,6 +32,7 @@ from api.models import (
     SubscriptionStatus,
 )
 from api.partner_service import PartnerService
+from api.billing_fulfillment import BillingFulfillmentService
 
 
 class SignatureError(Exception):
@@ -325,16 +326,24 @@ class BillingPGService:
         try:
             if parsed.event_type in {"payment.succeeded", "payment.failed", "refund.succeeded"}:
                 self._validate_payment(intent, parsed)
+                if parsed.event_type in {"payment.succeeded", "refund.succeeded"} and not parsed.payment_id:
+                    raise ValidationFailure("Identifiant de paiement absent.")
                 if parsed.payment_id:
                     intent.payment_id = parsed.payment_id
                 intent.customer_id = parsed.customer_id or intent.customer_id
                 intent.subscription_id = parsed.subscription_id or intent.subscription_id
                 if parsed.event_type == "payment.succeeded":
                     intent.status = PaymentIntentStatus.SUCCEEDED
+                    BillingFulfillmentService().apply_payment(
+                        db, intent, parsed.payment_id
+                    )
                 elif parsed.event_type == "payment.failed" and intent.status == PaymentIntentStatus.PENDING:
                     intent.status = PaymentIntentStatus.FAILED
                 elif parsed.event_type == "refund.succeeded":
                     intent.status = PaymentIntentStatus.REFUNDED
+                    BillingFulfillmentService().record_refund(
+                        db, intent, parsed.payment_id
+                    )
                 self._apply_partner_payment(db, intent, parsed.event_type)
             elif parsed.event_type in SUBSCRIPTION_STATUSES:
                 if not parsed.subscription_id:
@@ -366,6 +375,10 @@ class BillingPGService:
                 sub.latest_checkout_session_id = parsed.checkout_session_id or sub.latest_checkout_session_id
                 sub.last_provider_event_at = parsed.provider_created_at or sub.last_provider_event_at
                 intent.subscription_id = parsed.subscription_id
+                if status is SubscriptionStatus.EXPIRED:
+                    BillingFulfillmentService().expire_subscription(
+                        db, intent.workspace_id, parsed.subscription_id
+                    )
             event.status = ProviderEventStatus.PROCESSED
             event.processed_at = datetime.now(timezone.utc)
             db.commit()

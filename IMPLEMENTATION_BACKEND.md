@@ -75,7 +75,7 @@ crédit ou quota ne doit être considéré comme validé.
 - [~] Migrer plans, paiements, ledger et abonnements de SQLite vers PostgreSQL (paiements, mappings et abonnements techniques terminés ; plans produit et ledger restants).
 - [x] Ajouter un ledger immuable avec crédits positifs et débits négatifs.
 - [x] Réserver un crédit avant `RENDER`, le capturer au succès et le libérer après annulation ou échec définitif.
-- [~] Garantir l'idempotence des débits, remboursements et webhooks (réservations et webhooks terminés ; attribution post-paiement et remboursements commerciaux restants).
+- [~] Garantir l'idempotence des débits, remboursements et webhooks (réservations, webhooks et attribution post-paiement terminés ; politique de compensation financière après remboursement restant à finaliser).
 - [x] Ajouter les routes de catalogue, solde, checkout et historique.
 - [x] Ajouter Dodo Payments (abonnements/international) et MoneyFusion (paiements ponctuels XOF), avec confirmation serveur des notifications non signées MoneyFusion.
 
@@ -225,7 +225,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 ### Phase 6 — Business model et paiement
 
 - [ ] Organiser et valider l'atelier de la section 2.
-- [~] Implémenter le modèle retenu dans PostgreSQL (socle paiements, abonnements et mappings terminé ; règles commerciales restantes).
+- [x] Implémenter le modèle retenu dans PostgreSQL : paiements, abonnements, mappings, droits, crédits et exécutions idempotentes par paiement.
 - [x] Ajouter les quotas de connexions sociales, jobs simultanés, crédits, minutes source, stockage et publications.
 - [x] Implémenter les checkouts et webhooks Dodo/MoneyFusion derrière `BILLING_ENABLED`, avec tests PostgreSQL d'idempotence et de sécurité.
 - [~] Ajouter le programme partenaires (modèles, migration, remise checkout Dodo, commission post-paiement et annulation au remboursement terminés ; administration, versements et espace partenaire restants).

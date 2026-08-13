@@ -533,6 +533,11 @@ class SubscriptionStatus(str, enum.Enum):
     ON_HOLD = "on_hold"
 
 
+class FulfillmentStatus(str, enum.Enum):
+    APPLIED = "applied"
+    REFUNDED = "refunded"
+
+
 class PaymentIntent(Base):
     __tablename__ = "payment_intents"
     __table_args__ = (
@@ -654,11 +659,41 @@ class ProviderPriceMapping(Base):
     # Server-known expected pricing for validation (minor units & 3-letter currency)
     expected_amount_minor: Mapped[int] = mapped_column(Integer)
     expected_currency: Mapped[str] = mapped_column(String(3))
+    credits_granted: Mapped[int | None] = mapped_column(Integer)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class PaymentFulfillment(Base):
+    __tablename__ = "payment_fulfillments"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_payment_id", name="uq_payment_fulfillment_provider_payment"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    payment_intent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("payment_intents.id", ondelete="RESTRICT"), index=True
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[Provider] = mapped_column(
+        Enum(Provider, name="payment_fulfillment_provider", values_callable=_enum_values)
+    )
+    provider_payment_id: Mapped[str] = mapped_column(String(255))
+    purchase_code: Mapped[str] = mapped_column(String(64), index=True)
+    plan_code: Mapped[str | None] = mapped_column(String(32), index=True)
+    credits_granted: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[FulfillmentStatus] = mapped_column(
+        Enum(FulfillmentStatus, name="fulfillment_status", values_callable=_enum_values),
+        default=FulfillmentStatus.APPLIED,
+        index=True,
+    )
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # --- Plans, entitlements and immutable credit accounting ---

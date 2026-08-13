@@ -290,13 +290,7 @@ async def dodo_webhook(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Erreur interne")
 
 
-@router.post("/billing/webhooks/moneyfusion")
-@router.api_route("/billing/callbacks/moneyfusion", methods=["GET", "POST"])
-async def moneyfusion_notification(
-    request: Request,
-    settings: Annotated[APISettings, Depends(get_settings)] = None,
-    db: Annotated[Session, Depends(get_db)] = None,
-):
+async def _process_moneyfusion(request: Request, settings: APISettings, db: Session):
     _ensure_billing_enabled(settings)
     if request.method == "GET":
         token = request.query_params.get("token") or request.query_params.get("tokenPay")
@@ -313,3 +307,30 @@ async def moneyfusion_notification(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValidationFailure as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/billing/webhooks/moneyfusion", operation_id="moneyfusion_webhook")
+async def moneyfusion_webhook(
+    request: Request,
+    settings: Annotated[APISettings, Depends(get_settings)] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    return await _process_moneyfusion(request, settings, db)
+
+
+@router.get("/billing/callbacks/moneyfusion", operation_id="moneyfusion_callback_get")
+async def moneyfusion_callback_get(
+    request: Request,
+    settings: Annotated[APISettings, Depends(get_settings)] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    return await _process_moneyfusion(request, settings, db)
+
+
+@router.post("/billing/callbacks/moneyfusion", operation_id="moneyfusion_callback_post")
+async def moneyfusion_callback_post(
+    request: Request,
+    settings: Annotated[APISettings, Depends(get_settings)] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    return await _process_moneyfusion(request, settings, db)

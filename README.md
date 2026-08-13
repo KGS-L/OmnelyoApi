@@ -248,6 +248,16 @@ choisies depuis l'interface web.
 
 Toutes les routes applicatives sont préfixées par `/v1`.
 
+FastAPI publie automatiquement le contrat de l'API :
+
+- Swagger UI interactif : `http://localhost:8000/docs` ;
+- ReDoc : `http://localhost:8000/redoc` ;
+- schéma OpenAPI JSON : `http://localhost:8000/openapi.json`.
+
+Dans Swagger, utiliser **Authorize** avec un access token JWT pour tester les
+routes protégées. Le schéma OpenAPI pourra également générer le client TypeScript
+du frontend afin d'éviter de recopier manuellement les contrats.
+
 | Méthode | Route | Description |
 |---|---|---|
 | `GET` | `/health` | état de l'API |
