@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.config import get_settings
 from api.integrations.social import social_publishers
 from api.integrations.youtube import YouTubePublisher
+from api.integrations.tiktok import TikTokPublisher
 from api.models import ChannelPlatform
 from api.routes import (
     auth,
@@ -21,6 +22,10 @@ from api.routes import (
 settings = get_settings()
 if not social_publishers.has(ChannelPlatform.YOUTUBE):
     social_publishers.register(YouTubePublisher(settings.youtube_client_secrets_file))
+if not social_publishers.has(ChannelPlatform.TIKTOK):
+    social_publishers.register(TikTokPublisher(
+        settings.tiktok_client_key, settings.tiktok_client_secret, settings.tiktok_sandbox_mode
+    ))
 app = FastAPI(title=settings.app_name, version="0.1.0")
 app.add_middleware(
     CORSMiddleware,

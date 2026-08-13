@@ -16,6 +16,7 @@ from api.integrations.social import (
     social_publishers,
 )
 from api.integrations.youtube import YouTubePublisher
+from api.integrations.tiktok import TikTokPublisher
 from api.models import (
     Channel,
     ChannelPlatform,
@@ -59,6 +60,12 @@ def publish_video(job: Job, heartbeat) -> dict:
         social_publishers.register(
             YouTubePublisher(settings.youtube_client_secrets_file)
         )
+    if not social_publishers.has(ChannelPlatform.TIKTOK):
+        social_publishers.register(TikTokPublisher(
+            settings.tiktok_client_key,
+            settings.tiktok_client_secret,
+            settings.tiktok_sandbox_mode,
+        ))
     publisher = social_publishers.get(context.platform)
     work_dir = (
         config.TMP_DIR

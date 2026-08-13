@@ -27,6 +27,9 @@ class APISettings(BaseSettings):
     social_oauth_callback_base_url: str = ""
     social_oauth_state_ttl_seconds: int = 600
     youtube_client_secrets_file: Path = Path("credentials/client_secret.json")
+    tiktok_client_key: str = ""
+    tiktok_client_secret: str = ""
+    tiktok_sandbox_mode: bool = True
     worker_poll_interval_seconds: float = 2.0
     worker_stale_after_seconds: int = 300
     worker_heartbeat_interval_seconds: int = 30

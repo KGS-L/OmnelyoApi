@@ -47,7 +47,7 @@ class MediaValidationTests(unittest.TestCase):
     def test_unavailable_platform_is_rejected_before_queue(self):
         with self.assertRaises(SocialPublisherError) as raised:
             validate_publication_preflight(
-                platform=ChannelPlatform.TIKTOK,
+                platform=ChannelPlatform.INSTAGRAM,
                 storage_key="rendered/clip.mp4",
                 duration_seconds=60,
                 title="Titre",

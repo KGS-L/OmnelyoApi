@@ -12,3 +12,4 @@ email-validator>=2.2.0
 google-auth[requests]>=2.0.0
 google-api-python-client>=2.140.0
 google-auth-oauthlib>=1.2.1
+requests>=2.32.0

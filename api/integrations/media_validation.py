@@ -20,6 +20,19 @@ def validate_publication_preflight(
     visibility: PublicationVisibility,
     scheduled_at: datetime | None,
 ) -> None:
+    if platform is ChannelPlatform.TIKTOK:
+        suffix = PurePosixPath(storage_key).suffix.lower()
+        if suffix not in {".mp4", ".mov", ".webm"}:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "TikTok attend un rendu MP4, MOV ou WebM.")
+        if duration_seconds is None or duration_seconds <= 0 or duration_seconds > 180:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "TikTok sandbox accepte ici des vidéos de 3 minutes maximum.")
+        if scheduled_at is not None:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "TikTok ne prend pas en charge la programmation différée.")
+        if visibility is not PublicationVisibility.PRIVATE:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "TikTok sandbox autorise uniquement SELF_ONLY.")
+        if len(description or title) > 2200:
+            raise SocialPublisherError(SocialErrorCode.VALIDATION, "La légende TikTok ne peut pas dépasser 2 200 caractères.")
+        return
     if platform is not ChannelPlatform.YOUTUBE:
         raise SocialPublisherError(
             SocialErrorCode.AUTHORIZATION,
