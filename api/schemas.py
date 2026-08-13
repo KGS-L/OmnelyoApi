@@ -1,6 +1,10 @@
 """Contrats HTTP du backend SaaS."""
 import uuid
-from pydantic import BaseModel, EmailStr, Field
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+from api.models import WorkspaceRole
 
 
 class OTPRequest(BaseModel):
@@ -31,8 +35,22 @@ class TokenPair(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     email: str
     display_name: str | None
     avatar_url: str | None
     email_verified: bool
+
+
+class WorkspaceResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    role: WorkspaceRole
+    created_at: datetime
+
+
+class WorkspaceUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)

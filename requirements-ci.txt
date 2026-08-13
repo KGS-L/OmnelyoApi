@@ -8,4 +8,4 @@ pydantic-settings>=2.4.0
 PyJWT[crypto]>=2.9.0
 redis>=5.0.8
 email-validator>=2.2.0
-google-auth>=2.0.0
+google-auth[requests]>=2.0.0

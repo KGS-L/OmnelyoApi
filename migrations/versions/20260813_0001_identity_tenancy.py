@@ -25,7 +25,7 @@ def upgrade():
     op.create_table(
         "users",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("email", sa.String(320), nullable=False, unique=True),
+        sa.Column("email", sa.String(320), nullable=False),
         sa.Column("display_name", sa.String(120)),
         sa.Column("avatar_url", sa.String(2048)),
         sa.Column("email_verified", sa.Boolean(), nullable=False),
@@ -38,7 +38,7 @@ def upgrade():
         "workspaces",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("name", sa.String(120), nullable=False),
-        sa.Column("slug", sa.String(80), nullable=False, unique=True),
+        sa.Column("slug", sa.String(80), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_index("ix_workspaces_slug", "workspaces", ["slug"], unique=True)
