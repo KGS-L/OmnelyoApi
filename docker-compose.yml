@@ -107,11 +107,12 @@ services:
     environment:
       API_DATABASE_URL: ${API_DATABASE_URL:-postgresql+psycopg://shortpilot:shortpilot-local-dev@postgres:5432/shortpilot}
       REDIS_URL: ${REDIS_URL:-redis://:redis-local-dev@redis:6379/0}
+      DATABASE_PATH: /app/runtime/db/shortpilot.sqlite3
     volumes:
       - ./credentials:/app/credentials:ro
       - bot_storage:/app/storage
       - bot_logs:/app/logs
-      - bot_db:/app/db
+      - bot_db:/app/runtime/db
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}

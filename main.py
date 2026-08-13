@@ -23,6 +23,10 @@ def setup_logging() -> None:
             logging.StreamHandler(),
         ],
     )
+    # httpx journalise autrement les URLs Telegram complètes, lesquelles
+    # contiennent le token du bot dans leur chemin.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def main() -> None:

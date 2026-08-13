@@ -11,9 +11,5 @@ services:
   shortpilot-bot:
     volumes:
       - .:/app
-      - ./credentials:/app/credentials
-      - ./storage:/app/storage
-      - ./logs:/app/logs
-      - ./db:/app/db
     command: >
       watchmedo auto-restart --patterns="*.py" --recursive -- python main.py

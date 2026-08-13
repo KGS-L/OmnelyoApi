@@ -15,4 +15,5 @@ def build_bot() -> Application:
 
 def run_bot() -> None:
     app = build_bot()
-    app.run_polling()
+    # Un accès Internet instable ne doit pas arrêter tout le bot au démarrage.
+    app.run_polling(bootstrap_retries=-1)
