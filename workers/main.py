@@ -4,6 +4,7 @@ import logging
 from redis import Redis
 
 from api.config import get_settings
+from workers import handlers  # noqa: F401
 from workers.registry import registry
 from workers.runner import WorkerRunner
 

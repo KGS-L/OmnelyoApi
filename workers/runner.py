@@ -5,7 +5,7 @@ import signal
 import socket
 import uuid
 from datetime import datetime, timezone
-from threading import Event
+from threading import Event, Thread
 
 from redis import Redis
 from redis.exceptions import RedisError
@@ -79,6 +79,14 @@ class WorkerRunner:
             with SessionLocal() as heartbeat_db:
                 return heartbeat_job(heartbeat_db, job.id, self.worker_id)
 
+        heartbeat_stop = Event()
+        heartbeat_thread = Thread(
+            target=self._heartbeat_loop,
+            args=(heartbeat, heartbeat_stop),
+            daemon=True,
+            name=f"heartbeat-{job.id}",
+        )
+        heartbeat_thread.start()
         try:
             result = handler(job, heartbeat)
         except Exception as exc:
@@ -94,6 +102,9 @@ class WorkerRunner:
         else:
             with SessionLocal() as completion_db:
                 complete_job(completion_db, job.id, self.worker_id, result)
+        finally:
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=2)
         return True
 
     def stop(self, *_args) -> None:
@@ -126,3 +137,13 @@ class WorkerRunner:
     def _install_signal_handlers(self) -> None:
         signal.signal(signal.SIGTERM, self.stop)
         signal.signal(signal.SIGINT, self.stop)
+
+    def _heartbeat_loop(self, heartbeat, stop_event: Event) -> None:
+        interval = self.settings.worker_heartbeat_interval_seconds
+        while not stop_event.wait(interval):
+            try:
+                if not heartbeat():
+                    logger.warning("Lease perdue pendant le heartbeat du worker %s", self.worker_id)
+                    return
+            except Exception:
+                logger.exception("Échec du heartbeat du worker %s", self.worker_id)

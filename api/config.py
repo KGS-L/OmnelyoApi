@@ -24,6 +24,7 @@ class APISettings(BaseSettings):
     telegram_link_ttl_seconds: int = 600
     worker_poll_interval_seconds: float = 2.0
     worker_stale_after_seconds: int = 300
+    worker_heartbeat_interval_seconds: int = 30
     worker_recovery_interval_seconds: int = 60
     worker_retry_delay_seconds: int = 30
     frontend_origins: str = "http://localhost:3000"
