@@ -25,6 +25,7 @@ from api.dependencies import get_current_workspace_membership, require_workspace
 from api.models import PaymentIntent
 from api.models import BillingPlan, CreditLedgerEntry, WorkspaceRole
 from api.credit_service import CreditService
+from api.quota_service import QuotaService
 
 router = APIRouter(tags=["billing"])
 
@@ -83,6 +84,16 @@ class CreditEntryResponse(BaseModel):
     description: str | None
     expires_at: str | None
     created_at: str
+
+
+class UsageSummaryResponse(BaseModel):
+    source_seconds: int
+    source_seconds_limit: int
+    publications: int
+    publications_limit: int
+    storage_bytes: int
+    storage_bytes_limit: int
+    retention_days: int
 
 
 # ----- Helpers -----
@@ -164,6 +175,27 @@ def credit_history(
         expires_at=e.expires_at.isoformat() if e.expires_at else None,
         created_at=e.created_at.isoformat(),
     ) for e in entries]
+
+
+@router.get("/workspaces/{workspace_id}/billing/usage", response_model=UsageSummaryResponse)
+def billing_usage(
+    workspace_id: uuid.UUID,
+    membership=Depends(get_current_workspace_membership),
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    if membership.workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Workspace introuvable.")
+    quota = QuotaService()
+    plan = quota.plan_for_workspace(db, workspace_id)
+    usage = quota.usage_summary(db, workspace_id)
+    db.commit()
+    return UsageSummaryResponse(
+        **usage,
+        source_seconds_limit=plan.source_minutes_monthly_limit * 60,
+        publications_limit=plan.publications_monthly_limit,
+        storage_bytes_limit=plan.storage_bytes_limit,
+        retention_days=plan.retention_days,
+    )
 
 @router.post("/workspaces/{workspace_id}/billing/checkout", response_model=CheckoutResponse)
 def start_checkout(

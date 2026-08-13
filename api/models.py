@@ -316,10 +316,13 @@ class Video(Base):
     source_url: Mapped[str | None] = mapped_column(String(2048))
     storage_key: Mapped[str | None] = mapped_column(String(1024))
     rendered_storage_key: Mapped[str | None] = mapped_column(String(1024))
+    storage_size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    rendered_size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     mime_type: Mapped[str | None] = mapped_column(String(127))
     duration_seconds: Mapped[float | None] = mapped_column(Float)
     narration_text: Mapped[str | None] = mapped_column(Text)
     rendered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retention_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     status: Mapped[VideoStatus] = mapped_column(
         Enum(VideoStatus, name="video_status"), default=VideoStatus.UPLOADED, index=True
     )
@@ -691,3 +694,27 @@ class CreditLedgerEntry(Base):
     description: Mapped[str | None] = mapped_column(String(255))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class UsageMetric(str, enum.Enum):
+    SOURCE_SECONDS = "source_seconds"
+    PUBLICATIONS = "publications"
+
+
+class UsageEvent(Base):
+    __tablename__ = "usage_events"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "metric", "idempotency_key", name="uq_usage_events_ws_metric_idem"),
+        CheckConstraint("quantity > 0", name="ck_usage_events_quantity_positive"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    metric: Mapped[UsageMetric] = mapped_column(
+        Enum(UsageMetric, name="usage_metric", values_callable=_enum_values), index=True
+    )
+    quantity: Mapped[int] = mapped_column(BigInteger)
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

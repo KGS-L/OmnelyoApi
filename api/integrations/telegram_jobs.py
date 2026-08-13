@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from api.integrations.telegram import get_active_telegram_connection
 from api.models import Job, JobStatus, JobType, Video, VideoStatus
 from core.storage_keys import upload_source_key
+from api.quota_service import QuotaService
 
 
 def enqueue_url_from_telegram(
@@ -56,8 +57,15 @@ def import_video_from_telegram(
     except KeyError as exc:
         raise ValueError("Type de vidéo Telegram non pris en charge.") from exc
     storage_key = upload_source_key(connection.workspace_id, video_id, suffix)
-    upload_to_r2(local_path, storage_key)
     try:
+        size_bytes = local_path.stat().st_size
+        quota = QuotaService()
+        quota.ensure_storage_available(db, connection.workspace_id, size_bytes)
+        quota.record_source_seconds(
+            db, connection.workspace_id, max(1, int(duration_seconds + 0.999)), f"source-video:{video_id}"
+        )
+        retention_expires_at = quota.retention_deadline(db, connection.workspace_id)
+        upload_to_r2(local_path, storage_key)
         video = Video(
             id=video_id,
             workspace_id=connection.workspace_id,
@@ -66,6 +74,9 @@ def import_video_from_telegram(
             rendered_storage_key=storage_key,
             mime_type=mime_type,
             duration_seconds=duration_seconds,
+            storage_size_bytes=size_bytes,
+            rendered_size_bytes=0,
+            retention_expires_at=retention_expires_at,
             status=VideoStatus.READY,
         )
         db.add(video)

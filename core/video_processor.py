@@ -115,6 +115,14 @@ def _probe_video(video_path: Path) -> dict:
     return json.loads(result.stdout)
 
 
+def probe_video_duration(video_path: Path) -> float:
+    """Retourne la durée vérifiée d'un fichier vidéo local."""
+    duration = float(_probe_video(video_path).get("format", {}).get("duration", 0))
+    if duration <= 0:
+        raise ValueError("Impossible de déterminer la durée de la vidéo.")
+    return duration
+
+
 def _get_video_dimensions(probe: dict) -> tuple[int, int]:
     """Extrait width/height depuis le flux vidéo."""
     for stream in probe.get("streams", []):

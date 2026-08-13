@@ -10,6 +10,7 @@ from api.database import SessionLocal
 from api.models import Job, JobType, Video, VideoKind, VideoStatus
 from workers.registry import registry
 from core.storage_keys import job_clip_key
+from api.quota_service import QuotaService
 
 
 def process_video(job: Job, heartbeat) -> dict:
@@ -131,6 +132,12 @@ def _render_clip(
     final_path = work_dir / "clips" / f"{sequence:03d}_short.mp4"
     cut_clip(source_path, start_sec, end_sec, raw_path, remove_audio=True)
     process_for_short(raw_path, final_path)
+    size_bytes = final_path.stat().st_size
+    with SessionLocal() as quota_db:
+        quota = QuotaService()
+        quota.ensure_storage_available(quota_db, job.workspace_id, size_bytes)
+        retention_expires_at = quota.retention_deadline(quota_db, job.workspace_id)
+        quota_db.commit()
     storage_key = job_clip_key(job.workspace_id, job.id, sequence)
     upload_to_r2(final_path, storage_key)
     duration = end_sec - start_sec
@@ -153,6 +160,8 @@ def _render_clip(
         clip.storage_key = storage_key
         clip.mime_type = mimetypes.guess_type(final_path.name)[0] or "video/mp4"
         clip.duration_seconds = duration
+        clip.storage_size_bytes = size_bytes
+        clip.retention_expires_at = retention_expires_at
         clip.status = VideoStatus.READY
         clip.error_message = None
         db.commit()

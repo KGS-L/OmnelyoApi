@@ -290,12 +290,15 @@ Routes disponibles lorsque `BILLING_ENABLED=true` :
 - `GET /v1/billing/plans` ;
 - `GET /v1/workspaces/{workspace_id}/billing/credits` ;
 - `GET /v1/workspaces/{workspace_id}/billing/credits/history`.
+- `GET /v1/workspaces/{workspace_id}/billing/usage`.
 
 Les plans techniques `FREE`, `CREATOR` et `PRO` fournissent respectivement
 3/30/100 crédits mensuels et autorisent 1/2/8 connexions sociales. Un job
 `RENDER` réserve un crédit, le capture après succès et le libère après annulation
 ou échec définitif. Le ledger est append-only et toutes les opérations sont
-idempotentes. Les prix et l'attribution après paiement restent désactivés tant
+idempotentes. Les minutes source, destinations publiées et octets stockés sont
+mesurés côté serveur ; les échéances de rétention sont enregistrées sans lancer
+encore de suppression automatique. Les prix et l'attribution après paiement restent désactivés tant
 que la grille commerciale n'est pas validée.
 
 L'atelier décrit dans [IMPLEMENTATION_BACKEND.md](IMPLEMENTATION_BACKEND.md) doit
@@ -373,7 +376,7 @@ documentés dans [CI_CD.md](CI_CD.md).
 - [x] Docker Compose, CI et déploiement VPS ;
 - [ ] fournisseur d'emails transactionnels ;
 - [ ] atelier business model, quotas et règles de crédits ;
-- [x] plans techniques, quotas sociaux/jobs et ledger de crédits PostgreSQL ;
+- [x] plans techniques, quotas sociaux/jobs/volume et ledger de crédits PostgreSQL ;
 - [x] endpoints de paiement Dodo/MoneyFusion et webhooks idempotents ;
 - [ ] migration et validation des données SQLite historiques ;
 - [ ] métriques, alertes, rétention et sauvegardes testées ;

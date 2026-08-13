@@ -11,6 +11,7 @@ from api.database import SessionLocal
 from api.models import Job, JobType, Video, VideoStatus
 from workers.registry import registry
 from core.storage_keys import job_source_key
+from api.quota_service import QuotaService
 
 
 def validate_public_source_url(url: str) -> None:
@@ -64,6 +65,17 @@ def ingest_video(job: Job, heartbeat) -> dict:
         if not heartbeat(10):
             raise RuntimeError("Lease du job perdue avant le téléchargement.")
         downloaded_path = download_video(source_url, work_dir)
+        from core.video_processor import probe_video_duration
+        duration_seconds = probe_video_duration(downloaded_path)
+        size_bytes = downloaded_path.stat().st_size
+        with SessionLocal() as db:
+            quota = QuotaService()
+            quota.ensure_storage_available(db, job.workspace_id, size_bytes)
+            quota.record_source_seconds(
+                db, job.workspace_id, max(1, int(duration_seconds + 0.999)), f"source-video:{video_id}"
+            )
+            retention_expires_at = quota.retention_deadline(db, job.workspace_id)
+            db.commit()
         if not heartbeat(50):
             raise RuntimeError("Lease du job perdue après le téléchargement.")
         storage_key = job_source_key(
@@ -77,6 +89,9 @@ def ingest_video(job: Job, heartbeat) -> dict:
             video = db.get(Video, video_id)
             video.storage_key = storage_key
             video.mime_type = mime_type or "video/mp4"
+            video.duration_seconds = duration_seconds
+            video.storage_size_bytes = size_bytes
+            video.retention_expires_at = retention_expires_at
             video.status = VideoStatus.READY
             video.error_message = None
             db.commit()

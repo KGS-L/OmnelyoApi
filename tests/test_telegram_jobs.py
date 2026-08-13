@@ -2,6 +2,7 @@
 import tempfile
 import unittest
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -35,9 +36,11 @@ class TelegramJobTests(unittest.TestCase):
         db.commit.assert_called_once()
 
     @patch("core.storage_r2.upload_to_r2")
-    def test_uploaded_short_becomes_ready_workspace_video(self, upload):
+    @patch("api.integrations.telegram_jobs.QuotaService")
+    def test_uploaded_short_becomes_ready_workspace_video(self, quota_class, upload):
         db = MagicMock()
         db.scalar.return_value = self.connection
+        quota_class.return_value.retention_deadline.return_value = datetime.now(timezone.utc)
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "telegram.part"
             source.write_bytes(b"video")

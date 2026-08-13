@@ -35,6 +35,7 @@ from api.schemas import (
     PublicationUpdate,
 )
 from workers.signals import notify_workers
+from api.quota_service import QuotaExceeded, QuotaService
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/publications", tags=["publications"]
@@ -270,6 +271,13 @@ def enqueue_batch_publication_records(
         _validate_enqueue_target(db, workspace_id, publication)
         to_create.append(publication)
     for publication in to_create:
+        try:
+            QuotaService().record_publications(
+                db, workspace_id, 1, f"publication:{publication.id}"
+            )
+        except QuotaExceeded as exc:
+            db.rollback()
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
         job = Job(
             workspace_id=workspace_id,
             video_id=publication.video_id,

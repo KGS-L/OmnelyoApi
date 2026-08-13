@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import delete, select
@@ -17,7 +18,11 @@ from api.models import (
     JobStatus,
     JobType,
     Workspace,
+    UsageEvent,
+    UsageMetric,
+    Video,
 )
+from api.quota_service import QuotaExceeded, QuotaService
 
 
 @pytest.fixture()
@@ -128,3 +133,41 @@ def test_final_render_failure_releases_reservation(credit_db):
     session.refresh(reservation)
     assert reservation.status == CreditReservationStatus.RELEASED
     assert CreditService().workspace_summary(session, workspace.id)[3] == 3
+
+
+def test_source_minutes_are_idempotent_and_limited(credit_db):
+    session, workspace = credit_db
+    quota = QuotaService()
+    first = quota.record_source_seconds(session, workspace.id, 1800, "source:one")
+    duplicate = quota.record_source_seconds(session, workspace.id, 1800, "source:one")
+    assert first.id == duplicate.id
+    with pytest.raises(QuotaExceeded):
+        quota.record_source_seconds(session, workspace.id, 1, "source:two")
+    session.rollback()
+
+
+def test_publication_destinations_are_limited_per_period(credit_db):
+    session, workspace = credit_db
+    quota = QuotaService()
+    for index in range(10):
+        quota.record_publications(session, workspace.id, 1, f"publication:{index}")
+    with pytest.raises(QuotaExceeded):
+        quota.record_publications(session, workspace.id, 1, "publication:overflow")
+    session.rollback()
+
+
+def test_storage_and_retention_follow_free_plan(credit_db):
+    session, workspace = credit_db
+    quota = QuotaService()
+    video = Video(
+        workspace_id=workspace.id,
+        source_url="https://example.test/video.mp4",
+        storage_size_bytes=1_073_741_824,
+    )
+    session.add(video)
+    session.flush()
+    with pytest.raises(QuotaExceeded):
+        quota.ensure_storage_available(session, workspace.id, 1)
+    deadline = quota.retention_deadline(session, workspace.id)
+    remaining_days = (deadline - datetime.now(timezone.utc)).total_seconds() / 86400
+    assert 6.99 < remaining_days <= 7

@@ -14,6 +14,7 @@ from api.models import Job, Publication, Video, VideoStatus, WorkspaceMembership
 from api.media_upload import detect_video_type, stream_upload
 from core.storage_keys import belongs_to_workspace, upload_source_key
 from api.schemas import VideoCreate, VideoDownloadURLResponse, VideoResponse, VideoUpdate
+from api.quota_service import QuotaExceeded, QuotaService
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/videos", tags=["videos"])
 
@@ -40,6 +41,13 @@ async def upload_video(
     storage_key = None
     try:
         await stream_upload(file, temporary, settings.video_upload_max_bytes)
+        size_bytes = temporary.stat().st_size
+        from core.video_processor import probe_video_duration
+        duration_seconds = probe_video_duration(temporary)
+        quota = QuotaService()
+        quota.ensure_storage_available(db, workspace_id, size_bytes)
+        quota.record_source_seconds(db, workspace_id, max(1, int(duration_seconds + 0.999)), f"source-video:{video_id}")
+        retention_expires_at = quota.retention_deadline(db, workspace_id)
         with temporary.open("rb") as uploaded_file:
             mime_type, suffix = detect_video_type(uploaded_file.read(32))
         storage_key = upload_source_key(workspace_id, video_id, suffix)
@@ -50,12 +58,18 @@ async def upload_video(
             title=title.strip() if title and title.strip() else file.filename,
             storage_key=storage_key,
             mime_type=mime_type,
+            duration_seconds=duration_seconds,
+            storage_size_bytes=size_bytes,
+            retention_expires_at=retention_expires_at,
             status=VideoStatus.UPLOADED,
         )
         db.add(video)
         db.commit()
         db.refresh(video)
         return video
+    except QuotaExceeded as exc:
+        db.rollback()
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception:

@@ -225,7 +225,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 - [ ] Organiser et valider l'atelier de la section 2.
 - [~] Implémenter le modèle retenu dans PostgreSQL (socle paiements, abonnements et mappings terminé ; règles commerciales restantes).
-- [~] Ajouter quotas avant de permettre une utilisation publique (connexions sociales, jobs simultanés et crédits terminés ; minutes source, stockage et publications restants).
+- [x] Ajouter les quotas de connexions sociales, jobs simultanés, crédits, minutes source, stockage et publications.
 - [x] Implémenter les checkouts et webhooks Dodo/MoneyFusion derrière `BILLING_ENABLED`, avec tests PostgreSQL d'idempotence et de sécurité.
 
 ### Phase 7 — Production

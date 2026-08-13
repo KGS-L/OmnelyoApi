@@ -9,6 +9,7 @@ from api.database import SessionLocal
 from api.models import Job, JobType, Video, VideoKind, VideoStatus
 from workers.registry import registry
 from core.storage_keys import job_rendered_key
+from api.quota_service import QuotaService
 
 DEFAULT_THEME = "histoire intrigante ou fait insolite"
 
@@ -54,6 +55,10 @@ def render_video(job: Job, heartbeat) -> dict:
             output_path=output_path,
             audio_path=audio_path,
         )
+        rendered_size_bytes = output_path.stat().st_size
+        with SessionLocal() as quota_db:
+            QuotaService().ensure_storage_available(quota_db, job.workspace_id, rendered_size_bytes)
+            quota_db.commit()
         rendered_key = job_rendered_key(job.workspace_id, job.id)
         upload_to_r2(output_path, rendered_key)
         _require_lease(heartbeat, "après l'archivage du rendu", 90)
@@ -62,6 +67,7 @@ def render_video(job: Job, heartbeat) -> dict:
             persisted.rendered_storage_key = rendered_key
             persisted.narration_text = narration
             persisted.rendered_at = datetime.now(timezone.utc)
+            persisted.rendered_size_bytes = rendered_size_bytes
             persisted.status = VideoStatus.READY
             persisted.error_message = None
             db.commit()
