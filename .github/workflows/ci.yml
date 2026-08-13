@@ -34,8 +34,8 @@ jobs:
       API_JWT_SECRET: ci-only-secret-with-at-least-32-characters
       POSTGRES_PASSWORD: compose-validation-only
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
