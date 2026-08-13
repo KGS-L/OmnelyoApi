@@ -1,8 +1,6 @@
 """Configuration et création des clients LLM interchangeables."""
 from dataclasses import dataclass
 
-from openai import OpenAI
-
 import config
 
 
@@ -56,8 +54,10 @@ def get_llm_settings(provider: str | None = None) -> LLMSettings:
     return settings
 
 
-def create_llm_client(settings: LLMSettings) -> OpenAI:
+def create_llm_client(settings: LLMSettings):
     """Crée un client compatible OpenAI pour le fournisseur demandé."""
+    from openai import OpenAI
+
     kwargs = {"api_key": settings.api_key, "timeout": 60.0, "max_retries": 2}
     if settings.base_url:
         kwargs["base_url"] = settings.base_url

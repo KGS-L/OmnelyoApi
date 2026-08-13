@@ -5,11 +5,14 @@ CREATE TABLE IF NOT EXISTS source_videos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     telegram_user_id INTEGER,
     telegram_chat_id INTEGER,
+    source_type TEXT NOT NULL DEFAULT 'url', -- url | upload
     source_url TEXT NOT NULL,
+    requested_publish_at TEXT,
+    requested_title TEXT,
     local_path TEXT,
     submitted_at TEXT NOT NULL DEFAULT (datetime('now')),
     status TEXT NOT NULL DEFAULT 'pending',
-        -- pending | downloading | cutting | done | partial | failed
+        -- pending | downloading | cutting | publishing | done | partial | failed
     error_message TEXT
 );
 

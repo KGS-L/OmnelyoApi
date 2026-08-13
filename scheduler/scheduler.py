@@ -383,6 +383,129 @@ def process_source_video(source_video_id: int) -> None:
     )
 
 
+def process_uploaded_short(source_video_id: int) -> None:
+    """Prépare et programme un Short fourni directement par l'utilisateur."""
+    input_path = None
+    processed_path = None
+    clip_id = None
+    chat_id = None
+    try:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT telegram_user_id, telegram_chat_id, local_path, "
+                "requested_publish_at, requested_title FROM source_videos "
+                "WHERE id = ? AND source_type = 'upload'",
+                (source_video_id,),
+            ).fetchone()
+            if not row:
+                raise RuntimeError("Short importé introuvable.")
+            user_id = row["telegram_user_id"]
+            chat_id = row["telegram_chat_id"]
+            input_path = Path(row["local_path"])
+            title = (row["requested_title"] or "Mon Short #shorts")[:100]
+            requested_publish_at = row["requested_publish_at"]
+            conn.execute(
+                "UPDATE source_videos SET status = 'publishing' WHERE id = ?",
+                (source_video_id,),
+            )
+            conn.commit()
+
+        if not input_path.exists():
+            raise FileNotFoundError("Le fichier importé n'existe plus sur le serveur.")
+
+        processed_path = config.PROCESSED_DIR / f"uploaded_short_{source_video_id}.mp4"
+        video_processor.process_for_short(
+            input_path,
+            processed_path,
+            max_duration=config.UPLOADED_SHORT_MAX_DURATION_SEC,
+        )
+        duration = float(
+            video_processor._probe_video(processed_path).get("format", {}).get("duration", 0)
+        )
+
+        if requested_publish_at:
+            publish_slot = datetime.fromisoformat(requested_publish_at)
+        else:
+            publish_slot = get_next_available_slot(user_id)
+
+        # Le clip est créé avant l'upload : il réserve le créneau pour les autres jobs.
+        with get_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            scheduled_for_day = conn.execute(
+                "SELECT COUNT(*) FROM clips c "
+                "JOIN source_videos s ON s.id = c.source_video_id "
+                "WHERE date(c.scheduled_publish_at) = ? AND c.status != 'failed' "
+                "AND s.telegram_user_id = ?",
+                (publish_slot.date().isoformat(), user_id),
+            ).fetchone()[0]
+            if scheduled_for_day >= config.MAX_CLIPS_PER_DAY:
+                raise RuntimeError(
+                    f"La limite de {config.MAX_CLIPS_PER_DAY} publication(s) pour cette "
+                    "journée est déjà atteinte."
+                )
+            collision = conn.execute(
+                "SELECT 1 FROM clips c JOIN source_videos s ON s.id = c.source_video_id "
+                "WHERE c.scheduled_publish_at = ? AND c.status != 'failed' "
+                "AND s.telegram_user_id = ? LIMIT 1",
+                (publish_slot.isoformat(), user_id),
+            ).fetchone()
+            if collision:
+                raise RuntimeError(
+                    "Ce créneau est déjà réservé. Renvoie la vidéo avec une autre heure."
+                )
+            cursor = conn.execute(
+                "INSERT INTO clips "
+                "(source_video_id, sequence_order, duration_sec, youtube_title, "
+                "scheduled_publish_at, status) VALUES (?, 1, ?, ?, ?, 'rendering')",
+                (source_video_id, duration, title, publish_slot.isoformat()),
+            )
+            clip_id = cursor.lastrowid
+            conn.commit()
+
+        r2_url = storage_r2.upload_to_r2(
+            processed_path, f"workspaces/telegram-{user_id}/uploads/{source_video_id}.mp4"
+        )
+        send_telegram_notification(
+            f"📤 Upload YouTube du Short #{source_video_id} pour le "
+            f"{publish_slot.strftime('%d/%m/%Y à %H:%M')}…",
+            chat_id,
+        )
+        youtube_video_id = youtube_uploader.upload_scheduled_short(
+            video_path=processed_path,
+            title=title,
+            description="#shorts",
+            publish_at=publish_slot,
+            tags=["shorts"],
+            user_id=user_id,
+        )
+
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE clips SET local_path = NULL, r2_url = ?, youtube_video_id = ?, "
+                "status = 'scheduled' WHERE id = ?",
+                (r2_url, youtube_video_id, clip_id),
+            )
+            conn.execute(
+                "UPDATE source_videos SET local_path = NULL, status = 'done' WHERE id = ?",
+                (source_video_id,),
+            )
+            conn.commit()
+        send_telegram_notification(
+            f"✅ <b>Short programmé !</b>\n🎬 {title}\n"
+            f"📅 {publish_slot.strftime('%d/%m/%Y à %H:%M')}\n"
+            f"🔗 <code>{youtube_video_id}</code>",
+            chat_id,
+        )
+    except Exception as exc:
+        logger.exception("Échec du traitement du Short importé #%s", source_video_id)
+        if clip_id is not None:
+            _update_clip_status(clip_id, "failed")
+        _mark_source_failed(source_video_id, str(exc))
+        send_telegram_notification(f"❌ Échec du Short importé : {exc}", chat_id)
+    finally:
+        _cleanup_files([path for path in (input_path, processed_path) if path])
+
+
 def _mark_source_failed(source_id: int, error_msg: str) -> None:
     try:
         with get_connection() as conn:

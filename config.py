@@ -74,6 +74,17 @@ CLIP_MIN_DURATION_SEC = int(os.getenv("CLIP_MIN_DURATION_SEC", 60))
 CLIP_MAX_DURATION_SEC = int(os.getenv("CLIP_MAX_DURATION_SEC", 150))
 TIMEZONE = os.getenv("TIMEZONE", "Africa/Ouagadougou")
 
+# --- Shorts envoyés directement au bot ---
+# L'API Bot Telegram publique limite actuellement les téléchargements à 20 Mo.
+TELEGRAM_UPLOAD_MAX_MB = max(1, min(int(os.getenv("TELEGRAM_UPLOAD_MAX_MB", 19)), 20))
+UPLOADED_SHORT_MAX_DURATION_SEC = max(1, min(
+    int(os.getenv("UPLOADED_SHORT_MAX_DURATION_SEC", 180)), 180
+))
+MANUAL_SCHEDULE_MAX_DAYS = int(os.getenv("MANUAL_SCHEDULE_MAX_DAYS", 365))
+MANUAL_SCHEDULE_MIN_LEAD_MINUTES = int(
+    os.getenv("MANUAL_SCHEDULE_MIN_LEAD_MINUTES", 15)
+)
+
 # --- DB ---
 DATABASE_PATH = BASE_DIR / os.getenv("DATABASE_PATH", "db/robot_short_yt.sqlite3")
 

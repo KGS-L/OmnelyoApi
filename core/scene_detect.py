@@ -4,7 +4,6 @@ CLIP_MIN_DURATION_SEC / CLIP_MAX_DURATION_SEC (voir config.py).
 """
 import logging
 from pathlib import Path
-from scenedetect import detect, ContentDetector
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +15,8 @@ def detect_scenes(video_path: Path) -> list[tuple[float, float]]:
     logger.info(f"Analyse des scènes pour la vidéo : {video_path}")
     
     try:
+        from scenedetect import ContentDetector, detect
+
         scene_list = detect(str(video_path), ContentDetector())
         scenes = [(start.get_seconds(), end.get_seconds()) for start, end in scene_list]
         

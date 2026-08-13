@@ -8,6 +8,7 @@ sur YouTube (plusieurs shorts par jour, à horaires fixes).
 ## ✨ Fonctionnalités
 
 - 🔗 Soumission d'une vidéo source via un simple lien envoyé au bot Telegram
+- 📱 Envoi direct de Shorts personnels avec date et titre facultatifs
 - ✂️ Découpage intelligent en clips de 1 à 2m30 (détection de scènes, pas de coupe fixe arbitraire)
 - 🔇 Suppression automatique de l'audio original
 - 🤖 Génération d'un texte narratif ("storytime") via LLM, calibré sur la durée du clip
@@ -186,6 +187,9 @@ autorise l'accès avec ton compte Google — la connexion se termine automatique
 | `CLIP_MIN_DURATION_SEC` / `CLIP_MAX_DURATION_SEC` | Durée min/max des clips générés |
 | `TIMEZONE` | Fuseau horaire pour la programmation |
 | `DATABASE_PATH` | Chemin de la base SQLite |
+| `TELEGRAM_UPLOAD_MAX_MB` | Taille maximale d'un Short reçu par Telegram (maximum technique : 20 Mo) |
+| `UPLOADED_SHORT_MAX_DURATION_SEC` | Durée maximale d'un Short importé (maximum YouTube : 180 s) |
+| `MANUAL_SCHEDULE_MIN_LEAD_MINUTES` | Délai minimal avant une programmation manuelle |
 
 ## 💬 Commandes du bot
 
@@ -194,6 +198,30 @@ autorise l'accès avec ton compte Google — la connexion se termine automatique
 | `/connect_youtube` | Connecte (ou reconnecte) une chaîne YouTube |
 | `/status` | Affiche l'état des vidéos en cours de traitement / programmées |
 | *(lien vidéo)* | Soumet une nouvelle vidéo source pour découpage et programmation |
+| *(fichier vidéo)* | Programme un Short personnel, automatiquement ou à une date choisie |
+
+### Envoyer son propre Short
+
+Envoie la vidéo directement au bot, comme vidéo Telegram ou comme fichier vidéo.
+Par défaut, elle sera placée au prochain créneau disponible. La vidéo doit être
+verticale ou carrée, durer au maximum 3 minutes et respecter la taille configurée
+(19 Mo par défaut à cause de la limite de téléchargement de la Bot API Telegram).
+
+La légende permet de choisir le titre et la programmation :
+
+```text
+auto | Mon titre de Short
+```
+
+ou, pour imposer une date dans le fuseau `TIMEZONE` :
+
+```text
+2026-08-20 17:00 | Mon titre de Short
+```
+
+Pour programmer plusieurs Shorts, envoie chaque vidéo séparément avec sa propre
+légende. Le bot refuse les collisions de créneaux et applique `MAX_CLIPS_PER_DAY`
+par utilisateur.
 
 ## 🐳 Docker
 

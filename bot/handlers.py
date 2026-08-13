@@ -3,6 +3,7 @@ Handlers des commandes et des messages du bot Telegram.
 Implémenté avec python-telegram-bot (async/await).
 """
 import asyncio
+import html
 import logging
 from pathlib import Path
 from telegram import Update
@@ -69,7 +70,14 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "• /status — Vérifier l'état de la connexion\n"
         "• /disconnect — Déconnecter YouTube\n"
         "• /help — Afficher ce message\n\n"
-        "Envoie-moi directement un lien de vidéo (YouTube/TikTok/etc.) pour commencer !"
+        "<b>Créer depuis un lien :</b> envoie une URL YouTube/TikTok/etc.\n\n"
+        "<b>Publier ton propre Short :</b> envoie une vidéo verticale de "
+        f"{config.TELEGRAM_UPLOAD_MAX_MB} Mo maximum et "
+        f"{config.UPLOADED_SHORT_MAX_DURATION_SEC // 60} minutes maximum.\n"
+        "Légende facultative :\n"
+        "• <code>auto | Mon titre</code>\n"
+        "• <code>2026-08-20 17:00 | Mon titre</code>\n"
+        f"Les dates utilisent le fuseau {config.TIMEZONE}."
     )
     await update.message.reply_text(help_text, parse_mode="HTML")
 
@@ -177,6 +185,94 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
 
+async def handle_video_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Télécharge, valide et met en file un Short envoyé dans Telegram."""
+    from bot.upload_helpers import parse_upload_caption, validate_uploaded_short
+    from db.database import get_connection
+
+    message = update.effective_message
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    media = message.video or message.document
+
+    if not youtube_auth.is_connected(user_id=user_id):
+        await message.reply_text(
+            "❌ Connecte d'abord ta chaîne avec /connect_youtube."
+        )
+        return
+
+    if message.document and not (message.document.mime_type or "").startswith("video/"):
+        await message.reply_text("❌ Ce document n'est pas identifié comme une vidéo.")
+        return
+
+    max_bytes = config.TELEGRAM_UPLOAD_MAX_MB * 1024 * 1024
+    if media.file_size is None:
+        await message.reply_text("❌ Telegram n'a pas fourni la taille du fichier.")
+        return
+    if media.file_size > max_bytes:
+        await message.reply_text(
+            f"❌ Vidéo trop volumineuse : maximum {config.TELEGRAM_UPLOAD_MAX_MB} Mo."
+        )
+        return
+
+    try:
+        upload_request = parse_upload_caption(message.caption)
+    except ValueError as exc:
+        await message.reply_text(f"❌ {html.escape(str(exc))}", parse_mode="HTML")
+        return
+
+    suffix = Path(getattr(media, "file_name", "") or "short.mp4").suffix.lower()
+    if suffix not in {".mp4", ".mov", ".m4v", ".webm"}:
+        suffix = ".mp4"
+    destination = (
+        config.TMP_DIR
+        / f"telegram_{user_id}_{message.message_id}_{media.file_unique_id}{suffix}"
+    )
+
+    await message.reply_text("⬇️ Téléchargement et vérification du Short…")
+    try:
+        telegram_file = await context.bot.get_file(media.file_id)
+        await telegram_file.download_to_drive(custom_path=destination)
+        duration, width, height = await asyncio.to_thread(validate_uploaded_short, destination)
+
+        with get_connection() as conn:
+            cursor = conn.execute(
+                "INSERT INTO source_videos "
+                "(telegram_user_id, telegram_chat_id, source_type, source_url, local_path, "
+                "requested_publish_at, requested_title, status) "
+                "VALUES (?, ?, 'upload', ?, ?, ?, ?, 'pending')",
+                (
+                    user_id,
+                    chat_id,
+                    f"telegram://{media.file_unique_id}",
+                    str(destination),
+                    upload_request.publish_at.isoformat() if upload_request.publish_at else None,
+                    upload_request.title,
+                ),
+            )
+            source_video_id = cursor.lastrowid
+            conn.commit()
+    except Exception as exc:
+        destination.unlink(missing_ok=True)
+        logger.exception("Échec de réception du Short Telegram")
+        await message.reply_text(f"❌ Vidéo refusée : {html.escape(str(exc))}", parse_mode="HTML")
+        return
+
+    schedule_label = (
+        upload_request.publish_at.strftime("%d/%m/%Y à %H:%M")
+        if upload_request.publish_at
+        else "prochain créneau disponible"
+    )
+    await message.reply_text(
+        f"✅ Short accepté ({width}×{height}, {duration:.1f}s).\n"
+        f"📅 Publication : {schedule_label}\n"
+        f"🎬 Titre : {upload_request.title}"
+    )
+    asyncio.get_running_loop().run_in_executor(
+        None, scheduler.process_uploaded_short, source_video_id
+    )
+
+
 # =============================================================================
 # ENREGISTREMENT ET DEMARRAGE
 # =============================================================================
@@ -194,6 +290,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("connect_youtube", cmd_connect_youtube))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("disconnect", cmd_disconnect))
+    app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_upload))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 

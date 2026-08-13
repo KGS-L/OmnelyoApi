@@ -30,6 +30,12 @@ def _migrate_source_video_owner(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE source_videos ADD COLUMN telegram_user_id INTEGER")
     if "telegram_chat_id" not in columns:
         conn.execute("ALTER TABLE source_videos ADD COLUMN telegram_chat_id INTEGER")
+    if "source_type" not in columns:
+        conn.execute("ALTER TABLE source_videos ADD COLUMN source_type TEXT NOT NULL DEFAULT 'url'")
+    if "requested_publish_at" not in columns:
+        conn.execute("ALTER TABLE source_videos ADD COLUMN requested_publish_at TEXT")
+    if "requested_title" not in columns:
+        conn.execute("ALTER TABLE source_videos ADD COLUMN requested_title TEXT")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_source_videos_user "
         "ON source_videos(telegram_user_id)"
