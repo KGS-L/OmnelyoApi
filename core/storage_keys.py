@@ -7,6 +7,13 @@ def upload_source_key(workspace_id: uuid.UUID, video_id: uuid.UUID, suffix: str)
     return f"workspaces/{workspace_id}/videos/{video_id}/source{_suffix(suffix)}"
 
 
+def media_asset_key(workspace_id: uuid.UUID, asset_id: uuid.UUID, suffix: str) -> str:
+    normalized = PurePosixPath(f"file{suffix.lower()}").suffix
+    if normalized not in {".jpg", ".png"}:
+        raise ValueError("Extension d'image de stockage non prise en charge.")
+    return f"workspaces/{workspace_id}/media-assets/{asset_id}/source{normalized}"
+
+
 def job_source_key(workspace_id: uuid.UUID, job_id: uuid.UUID, suffix: str) -> str:
     return f"workspaces/{workspace_id}/jobs/{job_id}/source/input{_suffix(suffix)}"
 

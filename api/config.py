@@ -32,6 +32,7 @@ class APISettings(BaseSettings):
     tiktok_sandbox_mode: bool = True
     r2_signed_url_ttl_seconds: int = 900
     video_upload_max_bytes: int = 500 * 1024 * 1024
+    image_upload_max_bytes: int = 20 * 1024 * 1024
     api_rate_limit_enabled: bool = True
     api_rate_limit_per_minute: int = 120
     meta_app_id: str = ""

@@ -448,6 +448,15 @@ class Publication(Base):
     video: Mapped[Video | None] = relationship(back_populates="publications")
     channel: Mapped[Channel] = relationship(back_populates="publications")
     job: Mapped[Job | None] = relationship(back_populates="publications")
+    media_links: Mapped[list["PublicationMediaAsset"]] = relationship(
+        back_populates="publication",
+        cascade="all, delete-orphan",
+        order_by="PublicationMediaAsset.position",
+    )
+
+    @property
+    def asset_ids(self) -> list[uuid.UUID]:
+        return [link.asset_id for link in self.media_links]
 
 
 class MediaAsset(Base):
@@ -467,6 +476,9 @@ class MediaAsset(Base):
     height: Mapped[int | None] = mapped_column(Integer)
     retention_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    publication_links: Mapped[list["PublicationMediaAsset"]] = relationship(
+        back_populates="asset"
+    )
 
 
 class PublicationMediaAsset(Base):
@@ -484,6 +496,8 @@ class PublicationMediaAsset(Base):
         ForeignKey("media_assets.id", ondelete="RESTRICT"), primary_key=True
     )
     position: Mapped[int] = mapped_column(Integer)
+    publication: Mapped[Publication] = relationship(back_populates="media_links")
+    asset: Mapped[MediaAsset] = relationship(back_populates="publication_links")
 
 
 # --- Billing (provider-neutral, PostgreSQL source of truth) ---

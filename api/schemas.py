@@ -10,7 +10,9 @@ from api.models import (
     JobStatus,
     JobType,
     PublicationStatus,
+    PublicationFormat,
     PublicationVisibility,
+    MediaAssetType,
     SocialConnectionStatus,
     TelegramConnectionStatus,
     VideoStatus,
@@ -212,12 +214,19 @@ class JobResponse(BaseModel):
 
 
 class PublicationCreate(BaseModel):
-    video_id: uuid.UUID
+    video_id: uuid.UUID | None = None
+    format: PublicationFormat = PublicationFormat.SHORT_VIDEO
+    asset_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
     channel_id: uuid.UUID
     title: str = Field(min_length=1, max_length=255)
     description: str | None = None
     visibility: PublicationVisibility = PublicationVisibility.PRIVATE
     scheduled_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def require_media_matching_format(self):
+        _validate_publication_media(self.format, self.video_id, self.asset_ids)
+        return self
 
     @field_validator("scheduled_at")
     @classmethod
@@ -243,11 +252,16 @@ class PublicationDestinationCreate(BaseModel):
 
 
 class PublicationBatchCreate(BaseModel):
-    video_id: uuid.UUID
+    video_id: uuid.UUID | None = None
+    format: PublicationFormat = PublicationFormat.SHORT_VIDEO
+    asset_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
     destinations: list[PublicationDestinationCreate] = Field(min_length=1, max_length=20)
 
     @model_validator(mode="after")
     def require_unique_destinations(self):
+        _validate_publication_media(self.format, self.video_id, self.asset_ids)
+        if len(self.asset_ids) != len(set(self.asset_ids)):
+            raise ValueError("Chaque média ne peut être sélectionné qu'une fois.")
         channel_ids = [destination.channel_id for destination in self.destinations]
         if len(channel_ids) != len(set(channel_ids)):
             raise ValueError("Chaque destination ne peut être sélectionnée qu'une fois.")
@@ -283,7 +297,9 @@ class PublicationResponse(BaseModel):
 
     id: uuid.UUID
     workspace_id: uuid.UUID
-    video_id: uuid.UUID
+    video_id: uuid.UUID | None
+    format: PublicationFormat
+    asset_ids: list[uuid.UUID]
     channel_id: uuid.UUID
     job_id: uuid.UUID | None
     external_id: str | None
@@ -296,6 +312,41 @@ class PublicationResponse(BaseModel):
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class MediaAssetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    type: MediaAssetType
+    mime_type: str
+    size_bytes: int
+    width: int | None
+    height: int | None
+    retention_expires_at: datetime | None
+    created_at: datetime
+
+
+def _validate_publication_media(
+    publication_format: PublicationFormat,
+    video_id: uuid.UUID | None,
+    asset_ids: list[uuid.UUID],
+) -> None:
+    if publication_format in {
+        PublicationFormat.SHORT_VIDEO,
+        PublicationFormat.STANDARD_VIDEO,
+    }:
+        if video_id is None or asset_ids:
+            raise ValueError("Une publication vidéo requiert video_id et aucun asset_id.")
+        return
+    if video_id is not None:
+        raise ValueError("Une publication photo ne doit pas contenir video_id.")
+    expected = 1 if publication_format is PublicationFormat.PHOTO else None
+    if expected == 1 and len(asset_ids) != 1:
+        raise ValueError("Une publication photo requiert exactement un asset_id.")
+    if publication_format is PublicationFormat.CAROUSEL and not 2 <= len(asset_ids) <= 10:
+        raise ValueError("Un carrousel requiert entre 2 et 10 asset_ids.")
 
 
 class TelegramLinkResponse(BaseModel):

@@ -19,7 +19,9 @@ from api.models import (
     Job,
     JobStatus,
     JobType,
+    MediaAsset,
     Publication,
+    PublicationMediaAsset,
     PublicationStatus,
     SocialConnection,
     SocialConnectionStatus,
@@ -61,17 +63,11 @@ def _get_publication(
 def _ensure_targets_in_workspace(
     db: Session,
     workspace_id: uuid.UUID,
-    video_id: uuid.UUID,
+    video_id: uuid.UUID | None,
+    asset_ids: list[uuid.UUID],
     channel_id: uuid.UUID,
 ) -> None:
-    video_exists = db.scalar(
-        select(Video.id).where(
-            Video.id == video_id,
-            Video.workspace_id == workspace_id,
-        )
-    )
-    if video_exists is None:
-        raise HTTPException(status_code=404, detail="Vidéo introuvable.")
+    _ensure_media_in_workspace(db, workspace_id, video_id, asset_ids)
     channel_state = db.execute(
         select(Channel.status, SocialConnection.status)
         .outerjoin(SocialConnection, SocialConnection.id == Channel.connection_id)
@@ -94,14 +90,7 @@ def create_batch_publication_records(
     workspace_id: uuid.UUID,
     payload: PublicationBatchCreate,
 ) -> list[Publication]:
-    video_exists = db.scalar(
-        select(Video.id).where(
-            Video.id == payload.video_id,
-            Video.workspace_id == workspace_id,
-        )
-    )
-    if video_exists is None:
-        raise HTTPException(status_code=404, detail="Vidéo introuvable.")
+    _ensure_media_in_workspace(db, workspace_id, payload.video_id, payload.asset_ids)
     channel_ids = [destination.channel_id for destination in payload.destinations]
     rows = db.execute(
         select(Channel.id, Channel.status, SocialConnection.status)
@@ -126,6 +115,7 @@ def create_batch_publication_records(
         publication = Publication(
             workspace_id=workspace_id,
             video_id=payload.video_id,
+            format=payload.format,
             channel_id=destination.channel_id,
             title=destination.title.strip(),
             description=destination.description,
@@ -138,6 +128,8 @@ def create_batch_publication_records(
             ),
         )
         db.add(publication)
+        db.flush()
+        _attach_assets(db, publication, payload.asset_ids)
         publications.append(publication)
     db.commit()
     for publication in publications:
@@ -151,6 +143,28 @@ def _validate_future_schedule(scheduled_at: datetime | None) -> None:
             status_code=422,
             detail="La date de publication doit être dans le futur.",
         )
+
+
+def _ensure_media_in_workspace(
+    db: Session, workspace_id: uuid.UUID, video_id: uuid.UUID | None, asset_ids: list[uuid.UUID]
+) -> None:
+    if video_id is not None and db.scalar(select(Video.id).where(
+        Video.id == video_id, Video.workspace_id == workspace_id
+    )) is None:
+        raise HTTPException(status_code=404, detail="Vidéo introuvable.")
+    if asset_ids:
+        found = set(db.scalars(select(MediaAsset.id).where(
+            MediaAsset.workspace_id == workspace_id, MediaAsset.id.in_(asset_ids)
+        )))
+        if found != set(asset_ids):
+            raise HTTPException(status_code=404, detail="Une image est introuvable.")
+
+
+def _attach_assets(db: Session, publication: Publication, asset_ids: list[uuid.UUID]) -> None:
+    for position, asset_id in enumerate(asset_ids):
+        db.add(PublicationMediaAsset(
+            publication_id=publication.id, asset_id=asset_id, position=position
+        ))
 
 
 def update_publication_record(
@@ -346,10 +360,10 @@ def create_publication(
     db: Annotated[Session, Depends(get_db)],
 ) -> Publication:
     _ensure_targets_in_workspace(
-        db, workspace_id, payload.video_id, payload.channel_id
+        db, workspace_id, payload.video_id, payload.asset_ids, payload.channel_id
     )
     _validate_future_schedule(payload.scheduled_at)
-    values = payload.model_dump()
+    values = payload.model_dump(exclude={"asset_ids"})
     values["title"] = values["title"].strip()
     values["status"] = (
         PublicationStatus.SCHEDULED
@@ -358,6 +372,8 @@ def create_publication(
     )
     publication = Publication(workspace_id=workspace_id, **values)
     db.add(publication)
+    db.flush()
+    _attach_assets(db, publication, payload.asset_ids)
     db.commit()
     db.refresh(publication)
     return publication

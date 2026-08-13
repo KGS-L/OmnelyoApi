@@ -3,7 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from api.media_upload import detect_video_type, stream_upload
+from api.media_upload import (
+    detect_image_type,
+    detect_video_type,
+    image_dimensions,
+    stream_upload,
+)
 
 
 class AsyncUpload:
@@ -18,6 +23,18 @@ class AsyncUpload:
 
 
 class MediaUploadTests(unittest.IsolatedAsyncioTestCase):
+    def test_png_type_and_dimensions_are_detected(self):
+        header = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + (1080).to_bytes(4, "big") + (1350).to_bytes(4, "big")
+        self.assertEqual(detect_image_type(header), ("image/png", ".png"))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "image.png"
+            path.write_bytes(header)
+            self.assertEqual(image_dimensions(path, "image/png"), (1080, 1350))
+
+    def test_unknown_image_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "JPEG ou PNG"):
+            detect_image_type(b"GIF89a")
+
     def test_detects_mp4_from_content_not_filename(self):
         mime_type, suffix = detect_video_type(b"\x00\x00\x00\x18ftypisom" + b"\x00" * 20)
         self.assertEqual((mime_type, suffix), ("video/mp4", ".mp4"))

@@ -15,6 +15,7 @@ from api.routes import (
     auth,
     channels,
     jobs,
+    media_assets,
     publications,
     social_integrations,
     telegram_integration,
@@ -61,6 +62,7 @@ app.include_router(workspaces.router, prefix="/v1")
 app.include_router(channels.router, prefix="/v1")
 app.include_router(videos.router, prefix="/v1")
 app.include_router(jobs.router, prefix="/v1")
+app.include_router(media_assets.router, prefix="/v1")
 app.include_router(publications.router, prefix="/v1")
 app.include_router(social_integrations.workspace_router, prefix="/v1")
 app.include_router(social_integrations.callback_router, prefix="/v1")

@@ -251,6 +251,7 @@ Toutes les routes applicatives sont préfixées par `/v1`.
 | `GET/PATCH` | `/v1/workspaces/{workspace_id}` | consulter ou modifier un workspace |
 | `GET/POST/PATCH/DELETE` | `/v1/workspaces/{workspace_id}/channels` | gérer les chaînes sociales |
 | `POST` | `/v1/workspaces/{workspace_id}/videos/upload` | envoyer une vidéo en streaming |
+| `GET/POST` | `/v1/workspaces/{workspace_id}/media-assets[/upload]` | lister ou envoyer une image JPEG/PNG |
 | `GET/POST/PATCH/DELETE` | `/v1/workspaces/{workspace_id}/videos` | gérer les vidéos et leurs URLs signées |
 | `GET/POST` | `/v1/workspaces/{workspace_id}/jobs` | créer et suivre les traitements |
 | `POST` | `/v1/workspaces/{workspace_id}/jobs/{job_id}/cancel` | annuler un job en attente |

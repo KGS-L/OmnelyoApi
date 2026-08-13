@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from api.models import PublicationStatus
+from api.models import PublicationFormat, PublicationStatus
 from api.routes.publications import cancel_publication_record, update_publication_record
 from api.schemas import (
     PublicationBatchCreate,
@@ -19,6 +19,33 @@ from api.schemas import (
 
 
 class PublicationSchemaTests(unittest.TestCase):
+    def test_photo_requires_exactly_one_asset(self):
+        payload = PublicationCreate(
+            format=PublicationFormat.PHOTO,
+            asset_ids=[uuid.uuid4()],
+            channel_id=uuid.uuid4(),
+            title="Photo",
+        )
+        self.assertIsNone(payload.video_id)
+
+    def test_carousel_requires_between_two_and_ten_assets(self):
+        with self.assertRaises(ValidationError):
+            PublicationCreate(
+                format=PublicationFormat.CAROUSEL,
+                asset_ids=[uuid.uuid4()],
+                channel_id=uuid.uuid4(),
+                title="Carrousel",
+            )
+
+    def test_video_rejects_image_assets(self):
+        with self.assertRaises(ValidationError):
+            PublicationCreate(
+                video_id=uuid.uuid4(),
+                asset_ids=[uuid.uuid4()],
+                channel_id=uuid.uuid4(),
+                title="Vidéo",
+            )
+
     def test_naive_schedule_is_rejected(self):
         with self.assertRaises(ValidationError):
             PublicationCreate(
