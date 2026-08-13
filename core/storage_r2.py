@@ -98,3 +98,21 @@ def download_from_r2(remote_key: str, destination: Path) -> Path:
     if not destination.is_file() or destination.stat().st_size == 0:
         raise RuntimeError("R2 a produit un fichier vide ou introuvable.")
     return destination
+
+
+def create_presigned_download_url(remote_key: str, expires_in: int = 900) -> str:
+    """Crée une URL GET temporaire sans rendre le bucket public."""
+    remote_key = _validate_remote_key(remote_key)
+    if not 60 <= expires_in <= 3600:
+        raise ValueError("La durée d'une URL signée doit être comprise entre 60 et 3600 secondes.")
+    if not all([config.R2_ACCESS_KEY_ID, config.R2_SECRET_ACCESS_KEY, config.R2_ENDPOINT_URL]):
+        raise RuntimeError("Cloudflare R2 n'est pas configuré pour les URLs signées.")
+    try:
+        return _client().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": config.R2_BUCKET_NAME, "Key": remote_key},
+            ExpiresIn=expires_in,
+        )
+    except Exception as exc:
+        logger.exception("Échec de création de l'URL R2 signée")
+        raise RuntimeError("Impossible de créer l'URL de téléchargement temporaire.") from exc

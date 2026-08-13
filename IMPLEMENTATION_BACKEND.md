@@ -195,7 +195,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] Ajouter CRUD, pagination, filtres et réponses d'erreur cohérentes.
 - [ ] Ajouter upload vidéo par flux, limites de taille et validation MIME réelle.
 - [ ] Utiliser des clés R2 `workspaces/<workspace_id>/jobs/<job_id>/...`.
-- [ ] Ajouter URL signées, politiques de rétention et suppression.
+- [~] Ajouter URL signées, politiques de rétention et suppression (URLs R2 signées terminées ; rétention restante).
 
 ### Phase 3 — Liaison Telegram
 

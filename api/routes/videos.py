@@ -1,15 +1,17 @@
 """Gestion des vidéos d'un workspace."""
 import uuid
-from typing import Annotated
+from datetime import datetime, timedelta, timezone
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from api.database import get_db
+from api.config import APISettings, get_settings
 from api.dependencies import get_current_workspace_membership, require_workspace_roles
 from api.models import Job, Publication, Video, VideoStatus, WorkspaceMembership, WorkspaceRole
-from api.schemas import VideoCreate, VideoResponse, VideoUpdate
+from api.schemas import VideoCreate, VideoDownloadURLResponse, VideoResponse, VideoUpdate
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/videos", tags=["videos"])
 
@@ -55,6 +57,39 @@ def get_video(
     db: Annotated[Session, Depends(get_db)],
 ) -> Video:
     return _get_video(db, workspace_id, video_id)
+
+
+@router.get("/{video_id}/download-url", response_model=VideoDownloadURLResponse)
+def get_video_download_url(
+    workspace_id: uuid.UUID,
+    video_id: uuid.UUID,
+    membership: Annotated[
+        WorkspaceMembership, Depends(get_current_workspace_membership)
+    ],
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[APISettings, Depends(get_settings)],
+    artifact: Literal["source", "rendered"] = "rendered",
+) -> VideoDownloadURLResponse:
+    from core.storage_r2 import create_presigned_download_url
+
+    video = _get_video(db, workspace_id, video_id)
+    storage_key = video.rendered_storage_key if artifact == "rendered" else video.storage_key
+    if not storage_key:
+        raise HTTPException(status_code=404, detail="Cet artefact vidéo n'est pas disponible.")
+    expected_prefix = f"workspaces/{workspace_id}/"
+    if not storage_key.startswith(expected_prefix):
+        raise HTTPException(status_code=409, detail="La clé de stockage n'est pas isolée par workspace.")
+    try:
+        url = create_presigned_download_url(
+            storage_key, settings.r2_signed_url_ttl_seconds
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return VideoDownloadURLResponse(
+        url=url,
+        expires_at=datetime.now(timezone.utc)
+        + timedelta(seconds=settings.r2_signed_url_ttl_seconds),
+    )
 
 
 @router.post("", response_model=VideoResponse, status_code=status.HTTP_201_CREATED)

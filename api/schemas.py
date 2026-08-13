@@ -171,6 +171,11 @@ class VideoResponse(BaseModel):
     updated_at: datetime
 
 
+class VideoDownloadURLResponse(BaseModel):
+    url: str
+    expires_at: datetime
+
+
 class JobCreate(BaseModel):
     type: JobType
     video_id: uuid.UUID | None = None
