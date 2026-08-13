@@ -1,12 +1,51 @@
-credentials/client_secret.json
+# Secrets et configuration locale
 .env
-data.json
-db/robot_short_yt.sqlite3
-db/__pycache__
-core/__pycache__
-logs/bot.log
+.env.*
+!.env.example
 credentials/
-bot/__pycache__/
-scheduler/__pycache__/
-storage/tmp/
+data.json
+
+# Python : bytecode, caches et environnements virtuels
 __pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.tox/
+.nox/
+.venv/
+venv/
+env/
+ENV/
+
+# Couverture, builds et paquets
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Bases de données et données d'exécution locales
+*.sqlite
+*.sqlite3
+*.db
+storage/tmp/
+tmp/
+
+# Journaux et fichiers de processus
+*.log
+logs/
+*.pid
+
+# IDE et système d'exploitation
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

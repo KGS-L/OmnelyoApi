@@ -3,7 +3,20 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,6 +33,54 @@ class WorkspaceRole(str, enum.Enum):
     OWNER = "owner"
     ADMIN = "admin"
     MEMBER = "member"
+
+
+class ChannelPlatform(str, enum.Enum):
+    YOUTUBE = "youtube"
+
+
+class ChannelStatus(str, enum.Enum):
+    ACTIVE = "active"
+    DISCONNECTED = "disconnected"
+    REVOKED = "revoked"
+
+
+class VideoStatus(str, enum.Enum):
+    UPLOADED = "uploaded"
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class JobType(str, enum.Enum):
+    INGEST = "ingest"
+    PROCESS = "process"
+    RENDER = "render"
+    PUBLISH = "publish"
+
+
+class JobStatus(str, enum.Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class PublicationStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SCHEDULED = "scheduled"
+    PUBLISHING = "publishing"
+    PUBLISHED = "published"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class PublicationVisibility(str, enum.Enum):
+    PRIVATE = "private"
+    UNLISTED = "unlisted"
+    PUBLIC = "public"
 
 
 class User(Base):
@@ -52,6 +113,12 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(String(120))
     slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    channels: Mapped[list["Channel"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
+    videos: Mapped[list["Video"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
+    jobs: Mapped[list["Job"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
+    publications: Mapped[list["Publication"]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
 
 
 class WorkspaceMembership(Base):
@@ -72,3 +139,140 @@ class RefreshSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Channel(Base):
+    """Compte de diffusion connecté à un workspace."""
+
+    __tablename__ = "channels"
+    __table_args__ = (
+        UniqueConstraint("platform", "external_id", name="uq_channels_platform_external_id"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    platform: Mapped[ChannelPlatform] = mapped_column(
+        Enum(ChannelPlatform, name="channel_platform")
+    )
+    external_id: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(255))
+    handle: Mapped[str | None] = mapped_column(String(255))
+    avatar_url: Mapped[str | None] = mapped_column(String(2048))
+    status: Mapped[ChannelStatus] = mapped_column(
+        Enum(ChannelStatus, name="channel_status"), default=ChannelStatus.ACTIVE
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    workspace: Mapped[Workspace] = relationship(back_populates="channels")
+    publications: Mapped[list["Publication"]] = relationship(back_populates="channel")
+
+
+class Video(Base):
+    """Vidéo source ou artefact final appartenant à un workspace."""
+
+    __tablename__ = "videos"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str | None] = mapped_column(String(255))
+    source_url: Mapped[str | None] = mapped_column(String(2048))
+    storage_key: Mapped[str | None] = mapped_column(String(1024))
+    mime_type: Mapped[str | None] = mapped_column(String(127))
+    duration_seconds: Mapped[float | None] = mapped_column(Float)
+    status: Mapped[VideoStatus] = mapped_column(
+        Enum(VideoStatus, name="video_status"), default=VideoStatus.UPLOADED, index=True
+    )
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    workspace: Mapped[Workspace] = relationship(back_populates="videos")
+    jobs: Mapped[list["Job"]] = relationship(back_populates="video")
+    publications: Mapped[list["Publication"]] = relationship(back_populates="video")
+
+
+class Job(Base):
+    """Unité de travail persistante et rejouable du pipeline vidéo."""
+
+    __tablename__ = "jobs"
+    __table_args__ = (
+        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_jobs_progress"),
+        CheckConstraint("attempts >= 0", name="ck_jobs_attempts"),
+        CheckConstraint("max_attempts > 0", name="ck_jobs_max_attempts"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    video_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("videos.id", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[JobType] = mapped_column(Enum(JobType, name="job_type"))
+    status: Mapped[JobStatus] = mapped_column(
+        Enum(JobStatus, name="job_status"), default=JobStatus.QUEUED, index=True
+    )
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    payload: Mapped[dict | None] = mapped_column(JSON)
+    result: Mapped[dict | None] = mapped_column(JSON)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    workspace: Mapped[Workspace] = relationship(back_populates="jobs")
+    video: Mapped[Video | None] = relationship(back_populates="jobs")
+    publications: Mapped[list["Publication"]] = relationship(back_populates="job")
+
+
+class Publication(Base):
+    """Planification et résultat de diffusion d'une vidéo sur une chaîne."""
+
+    __tablename__ = "publications"
+    __table_args__ = (
+        UniqueConstraint("channel_id", "external_id", name="uq_publications_channel_external_id"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    video_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("videos.id", ondelete="CASCADE"), index=True
+    )
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("channels.id", ondelete="CASCADE"), index=True
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("jobs.id", ondelete="SET NULL"), index=True
+    )
+    external_id: Mapped[str | None] = mapped_column(String(255))
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    visibility: Mapped[PublicationVisibility] = mapped_column(
+        Enum(PublicationVisibility, name="publication_visibility"),
+        default=PublicationVisibility.PRIVATE,
+    )
+    status: Mapped[PublicationStatus] = mapped_column(
+        Enum(PublicationStatus, name="publication_status"),
+        default=PublicationStatus.DRAFT,
+        index=True,
+    )
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    workspace: Mapped[Workspace] = relationship(back_populates="publications")
+    video: Mapped[Video] = relationship(back_populates="publications")
+    channel: Mapped[Channel] = relationship(back_populates="publications")
+    job: Mapped[Job | None] = relationship(back_populates="publications")
