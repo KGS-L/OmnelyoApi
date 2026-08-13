@@ -19,10 +19,18 @@ from api.models import (
     JobType,
     Publication,
     PublicationStatus,
+    SocialConnection,
+    SocialConnectionStatus,
     Video,
     WorkspaceMembership,
 )
-from api.schemas import JobResponse, PublicationCreate, PublicationResponse, PublicationUpdate
+from api.schemas import (
+    JobResponse,
+    PublicationBatchCreate,
+    PublicationCreate,
+    PublicationResponse,
+    PublicationUpdate,
+)
 from workers.signals import notify_workers
 
 router = APIRouter(
@@ -60,16 +68,77 @@ def _ensure_targets_in_workspace(
     )
     if video_exists is None:
         raise HTTPException(status_code=404, detail="Vidéo introuvable.")
-    channel_status = db.scalar(
-        select(Channel.status).where(
+    channel_state = db.execute(
+        select(Channel.status, SocialConnection.status)
+        .outerjoin(SocialConnection, SocialConnection.id == Channel.connection_id)
+        .where(
             Channel.id == channel_id,
             Channel.workspace_id == workspace_id,
         )
-    )
-    if channel_status is None:
+    ).one_or_none()
+    if channel_state is None:
         raise HTTPException(status_code=404, detail="Chaîne introuvable.")
-    if channel_status is not ChannelStatus.ACTIVE:
-        raise HTTPException(status_code=409, detail="Cette chaîne n'est pas active.")
+    if (
+        channel_state[0] is not ChannelStatus.ACTIVE
+        or channel_state[1] is not SocialConnectionStatus.ACTIVE
+    ):
+        raise HTTPException(status_code=409, detail="Cette destination n'est pas connectée.")
+
+
+def create_batch_publication_records(
+    db: Session,
+    workspace_id: uuid.UUID,
+    payload: PublicationBatchCreate,
+) -> list[Publication]:
+    video_exists = db.scalar(
+        select(Video.id).where(
+            Video.id == payload.video_id,
+            Video.workspace_id == workspace_id,
+        )
+    )
+    if video_exists is None:
+        raise HTTPException(status_code=404, detail="Vidéo introuvable.")
+    channel_ids = [destination.channel_id for destination in payload.destinations]
+    rows = db.execute(
+        select(Channel.id, Channel.status, SocialConnection.status)
+        .outerjoin(SocialConnection, SocialConnection.id == Channel.connection_id)
+        .where(
+            Channel.workspace_id == workspace_id,
+            Channel.id.in_(channel_ids),
+        )
+    ).all()
+    states = {row[0]: (row[1], row[2]) for row in rows}
+    if set(states) != set(channel_ids):
+        raise HTTPException(status_code=404, detail="Une destination est introuvable.")
+    if any(
+        channel_status is not ChannelStatus.ACTIVE
+        or connection_status is not SocialConnectionStatus.ACTIVE
+        for channel_status, connection_status in states.values()
+    ):
+        raise HTTPException(status_code=409, detail="Une destination n'est pas connectée.")
+    publications: list[Publication] = []
+    for destination in payload.destinations:
+        _validate_future_schedule(destination.scheduled_at)
+        publication = Publication(
+            workspace_id=workspace_id,
+            video_id=payload.video_id,
+            channel_id=destination.channel_id,
+            title=destination.title.strip(),
+            description=destination.description,
+            visibility=destination.visibility,
+            scheduled_at=destination.scheduled_at,
+            status=(
+                PublicationStatus.SCHEDULED
+                if destination.scheduled_at is not None
+                else PublicationStatus.DRAFT
+            ),
+        )
+        db.add(publication)
+        publications.append(publication)
+    db.commit()
+    for publication in publications:
+        db.refresh(publication)
+    return publications
 
 
 def _validate_future_schedule(scheduled_at: datetime | None) -> None:
@@ -228,6 +297,22 @@ def create_publication(
     db.commit()
     db.refresh(publication)
     return publication
+
+
+@router.post(
+    "/batch",
+    response_model=list[PublicationResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_batch_publications(
+    workspace_id: uuid.UUID,
+    payload: PublicationBatchCreate,
+    membership: Annotated[
+        WorkspaceMembership, Depends(get_current_workspace_membership)
+    ],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[Publication]:
+    return create_batch_publication_records(db, workspace_id, payload)
 
 
 @router.patch("/{publication_id}", response_model=PublicationResponse)

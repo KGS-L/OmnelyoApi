@@ -150,7 +150,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] Stocker scopes, expiration, statut, date de dernière vérification et métadonnées minimales.
 - [x] Ne jamais exposer les tokens dans les réponses API ou les logs.
 - [x] Ajouter une contrainte garantissant que vidéo, chaîne, job et publication appartiennent au même workspace.
-- [ ] Conserver une publication par destination, même lors d'une sélection multiple.
+- [x] Conserver une publication par destination, même lors d'une sélection multiple.
 
 ### Contrat commun des adaptateurs
 
@@ -163,9 +163,9 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 ### Expérience de création d'une publication
 
-- [ ] L'utilisateur sélectionne YouTube, TikTok, Instagram et/ou Facebook.
-- [ ] L'API vérifie que chaque destination est connectée et autorisée.
-- [ ] L'utilisateur peut personnaliser légende, visibilité et horaire par plateforme.
+- [x] L'utilisateur sélectionne YouTube, TikTok, Instagram et/ou Facebook.
+- [x] L'API vérifie que chaque destination est connectée et autorisée.
+- [x] L'utilisateur peut personnaliser légende, visibilité et horaire par plateforme.
 - [ ] L'API valide le média et les options selon chaque destination avant facturation ou mise en file.
 - [ ] Un job parent orchestre les rendus ; un job de publication séparé est créé par destination.
 - [ ] Un échec sur une plateforme ne bloque pas les autres.

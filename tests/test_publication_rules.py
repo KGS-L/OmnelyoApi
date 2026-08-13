@@ -9,7 +9,12 @@ from pydantic import ValidationError
 
 from api.models import PublicationStatus
 from api.routes.publications import cancel_publication_record, update_publication_record
-from api.schemas import PublicationCreate, PublicationUpdate
+from api.schemas import (
+    PublicationBatchCreate,
+    PublicationCreate,
+    PublicationDestinationCreate,
+    PublicationUpdate,
+)
 
 
 class PublicationSchemaTests(unittest.TestCase):
@@ -31,6 +36,17 @@ class PublicationSchemaTests(unittest.TestCase):
             scheduled_at=scheduled_at,
         )
         self.assertEqual(payload.scheduled_at, scheduled_at)
+
+    def test_batch_rejects_duplicate_destination(self):
+        channel_id = uuid.uuid4()
+        with self.assertRaises(ValueError):
+            PublicationBatchCreate(
+                video_id=uuid.uuid4(),
+                destinations=[
+                    PublicationDestinationCreate(channel_id=channel_id, title="YouTube"),
+                    PublicationDestinationCreate(channel_id=channel_id, title="Doublon"),
+                ],
+            )
 
 
 class PublicationTransitionTests(unittest.TestCase):

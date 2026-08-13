@@ -39,7 +39,9 @@ from api.routes.publications import (
     _ensure_targets_in_workspace,
     _get_publication,
     enqueue_publication_record,
+    create_batch_publication_records,
 )
+from api.schemas import PublicationBatchCreate, PublicationDestinationCreate
 from api.routes.videos import _get_video, delete_video
 from api.security.social_credentials import SocialCredentialCipher
 from workers.job_state import (
@@ -182,6 +184,102 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
         self.assertEqual(first.id, second.id)
         self.assertEqual(first.type, JobType.PUBLISH)
         self.assertEqual(first.payload["publication_id"], str(publication.id))
+
+    def test_batch_creates_independent_publication_per_destination(self):
+        cipher = SocialCredentialCipher(Fernet.generate_key().decode("ascii"))
+        _, channels = persist_oauth_grant(
+            self.db,
+            PendingSocialOAuth(
+                user_id=self.user_a.id,
+                workspace_id=self.workspace_a.id,
+                platform=ChannelPlatform.YOUTUBE,
+            ),
+            OAuthGrant(
+                provider_account_id="batch-youtube-account",
+                access_token="batch-access",
+                refresh_token="batch-refresh",
+                scopes=["youtube.upload"],
+                expires_at=None,
+                channels=[
+                    SocialChannel(external_id="batch-channel-1", name="Chaîne 1"),
+                    SocialChannel(external_id="batch-channel-2", name="Chaîne 2"),
+                ],
+            ),
+            cipher,
+        )
+        video = Video(
+            workspace_id=self.workspace_a.id,
+            title="Vidéo multi-destination",
+            rendered_storage_key="workspaces/a/rendered/batch.mp4",
+        )
+        self.db.add(video)
+        self.db.flush()
+        scheduled_at = datetime.now(timezone.utc) + timedelta(hours=2)
+        publications = create_batch_publication_records(
+            self.db,
+            self.workspace_a.id,
+            PublicationBatchCreate(
+                video_id=video.id,
+                destinations=[
+                    PublicationDestinationCreate(
+                        channel_id=channels[0].id,
+                        title="Titre immédiat",
+                    ),
+                    PublicationDestinationCreate(
+                        channel_id=channels[1].id,
+                        title="Titre programmé",
+                        scheduled_at=scheduled_at,
+                    ),
+                ],
+            ),
+        )
+        self.assertEqual(len(publications), 2)
+        self.assertNotEqual(publications[0].id, publications[1].id)
+        self.assertEqual(
+            {publication.channel_id for publication in publications},
+            {channels[0].id, channels[1].id},
+        )
+        self.assertEqual(publications[0].status.value, "draft")
+        self.assertEqual(publications[1].status.value, "scheduled")
+        count_before = len(
+            list(
+                self.db.scalars(
+                    select(Publication).where(
+                        Publication.workspace_id == self.workspace_a.id,
+                        Publication.video_id == video.id,
+                    )
+                )
+            )
+        )
+        with self.assertRaises(HTTPException):
+            create_batch_publication_records(
+                self.db,
+                self.workspace_a.id,
+                PublicationBatchCreate(
+                    video_id=video.id,
+                    destinations=[
+                        PublicationDestinationCreate(
+                            channel_id=channels[0].id,
+                            title="Destination valide",
+                        ),
+                        PublicationDestinationCreate(
+                            channel_id=uuid.uuid4(),
+                            title="Destination inconnue",
+                        ),
+                    ],
+                ),
+            )
+        count_after = len(
+            list(
+                self.db.scalars(
+                    select(Publication).where(
+                        Publication.workspace_id == self.workspace_a.id,
+                        Publication.video_id == video.id,
+                    )
+                )
+            )
+        )
+        self.assertEqual(count_after, count_before)
 
     def test_video_query_cannot_cross_workspace_boundary(self):
         video = Video(

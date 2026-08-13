@@ -222,6 +222,33 @@ class PublicationCreate(BaseModel):
         return value
 
 
+class PublicationDestinationCreate(BaseModel):
+    channel_id: uuid.UUID
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    visibility: PublicationVisibility = PublicationVisibility.PRIVATE
+    scheduled_at: datetime | None = None
+
+    @field_validator("scheduled_at")
+    @classmethod
+    def require_scheduled_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("La date de publication doit contenir un fuseau horaire.")
+        return value
+
+
+class PublicationBatchCreate(BaseModel):
+    video_id: uuid.UUID
+    destinations: list[PublicationDestinationCreate] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def require_unique_destinations(self):
+        channel_ids = [destination.channel_id for destination in self.destinations]
+        if len(channel_ids) != len(set(channel_ids)):
+            raise ValueError("Chaque destination ne peut être sélectionnée qu'une fois.")
+        return self
+
+
 class PublicationUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
