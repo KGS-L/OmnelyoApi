@@ -54,6 +54,7 @@ class ContentModelsTests(unittest.TestCase):
         self.assertEqual(foreign_keys["channel_id"], "channels.id")
         self.assertEqual(foreign_keys["job_id"], "jobs.id")
         self.assertTrue(Publication.__table__.c.job_id.nullable)
+        self.assertIn("provider_response", Publication.__table__.c)
 
     def test_telegram_connection_is_tenant_scoped_and_unique(self):
         table = TelegramConnection.__table__

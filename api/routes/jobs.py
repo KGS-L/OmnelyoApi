@@ -119,6 +119,7 @@ def create_job(
         WorkspaceMembership, Depends(get_current_workspace_membership)
     ],
     db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[APISettings, Depends(get_settings)],
 ) -> Job:
     if payload.video_id is not None:
         _ensure_video_in_workspace(db, workspace_id, payload.video_id)

@@ -35,7 +35,11 @@ from api.models import (
 )
 from api.routes.channels import _get_channel
 from api.routes.jobs import _ensure_video_in_workspace, _get_job
-from api.routes.publications import _ensure_targets_in_workspace, _get_publication
+from api.routes.publications import (
+    _ensure_targets_in_workspace,
+    _get_publication,
+    enqueue_publication_record,
+)
 from api.routes.videos import _get_video, delete_video
 from api.security.social_credentials import SocialCredentialCipher
 from workers.job_state import (
@@ -138,6 +142,46 @@ class PostgreSQLWorkspaceIsolationTests(unittest.TestCase):
         self.assertEqual(connection.scopes, ["content_publish"])
         self.assertEqual(channels[0].workspace_id, self.workspace_a.id)
         self.assertEqual(channels[0].connection_id, connection.id)
+
+    def test_ready_publication_is_enqueued_only_once(self):
+        cipher = SocialCredentialCipher(Fernet.generate_key().decode("ascii"))
+        _, channels = persist_oauth_grant(
+            self.db,
+            PendingSocialOAuth(
+                user_id=self.user_a.id,
+                workspace_id=self.workspace_a.id,
+                platform=ChannelPlatform.YOUTUBE,
+            ),
+            OAuthGrant(
+                provider_account_id="youtube-account",
+                access_token="access-secret",
+                refresh_token="refresh-secret",
+                scopes=["youtube.upload"],
+                expires_at=None,
+                channels=[SocialChannel(external_id="youtube-channel", name="YouTube")],
+            ),
+            cipher,
+        )
+        video = Video(
+            workspace_id=self.workspace_a.id,
+            title="Clip rendu",
+            rendered_storage_key="workspaces/a/rendered/clip.mp4",
+        )
+        self.db.add(video)
+        self.db.flush()
+        publication = Publication(
+            workspace_id=self.workspace_a.id,
+            video_id=video.id,
+            channel_id=channels[0].id,
+            title="Publication",
+        )
+        self.db.add(publication)
+        self.db.commit()
+        first = enqueue_publication_record(self.db, self.workspace_a.id, publication)
+        second = enqueue_publication_record(self.db, self.workspace_a.id, publication)
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(first.type, JobType.PUBLISH)
+        self.assertEqual(first.payload["publication_id"], str(publication.id))
 
     def test_video_query_cannot_cross_workspace_boundary(self):
         video = Video(

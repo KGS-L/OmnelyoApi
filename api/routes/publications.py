@@ -6,18 +6,24 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from redis import Redis
 
+from api.config import APISettings, get_settings
 from api.database import get_db
 from api.dependencies import get_current_workspace_membership
 from api.models import (
     Channel,
     ChannelStatus,
+    Job,
+    JobStatus,
+    JobType,
     Publication,
     PublicationStatus,
     Video,
     WorkspaceMembership,
 )
-from api.schemas import PublicationCreate, PublicationResponse, PublicationUpdate
+from api.schemas import JobResponse, PublicationCreate, PublicationResponse, PublicationUpdate
+from workers.signals import notify_workers
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/publications", tags=["publications"]
@@ -101,6 +107,62 @@ def cancel_publication_record(publication: Publication) -> None:
             detail="Cette publication ne peut plus être annulée.",
         )
     publication.status = PublicationStatus.CANCELLED
+
+
+def enqueue_publication_record(
+    db: Session, workspace_id: uuid.UUID, publication: Publication
+) -> Job:
+    publication = db.scalar(
+        select(Publication)
+        .where(
+            Publication.id == publication.id,
+            Publication.workspace_id == workspace_id,
+        )
+        .with_for_update()
+    )
+    if publication is None:
+        raise HTTPException(status_code=404, detail="Publication introuvable.")
+    if publication.job_id is not None:
+        existing = db.get(Job, publication.job_id)
+        if existing is not None and existing.status in {
+            JobStatus.QUEUED,
+            JobStatus.RUNNING,
+            JobStatus.SUCCEEDED,
+        }:
+            return existing
+    if publication.status not in EDITABLE_STATUSES | {PublicationStatus.FAILED}:
+        raise HTTPException(status_code=409, detail="Cette publication ne peut pas être mise en file.")
+    video = db.scalar(
+        select(Video).where(
+            Video.id == publication.video_id,
+            Video.workspace_id == workspace_id,
+        )
+    )
+    if video is None or not video.rendered_storage_key:
+        raise HTTPException(status_code=409, detail="La vidéo doit d'abord être rendue.")
+    channel = db.scalar(
+        select(Channel).where(
+            Channel.id == publication.channel_id,
+            Channel.workspace_id == workspace_id,
+            Channel.status == ChannelStatus.ACTIVE,
+        )
+    )
+    if channel is None or channel.connection_id is None:
+        raise HTTPException(status_code=409, detail="La destination sociale n'est pas connectée.")
+    job = Job(
+        workspace_id=workspace_id,
+        video_id=publication.video_id,
+        type=JobType.PUBLISH,
+        payload={"publication_id": str(publication.id)},
+    )
+    db.add(job)
+    db.flush()
+    publication.job_id = job.id
+    publication.status = PublicationStatus.PUBLISHING
+    publication.error_message = None
+    db.commit()
+    db.refresh(job)
+    return job
 
 
 @router.get("", response_model=list[PublicationResponse])
@@ -199,3 +261,26 @@ def cancel_publication(
     db.commit()
     db.refresh(publication)
     return publication
+
+
+@router.post("/{publication_id}/publish", response_model=JobResponse)
+def enqueue_publication(
+    workspace_id: uuid.UUID,
+    publication_id: uuid.UUID,
+    membership: Annotated[
+        WorkspaceMembership, Depends(get_current_workspace_membership)
+    ],
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[APISettings, Depends(get_settings)],
+) -> Job:
+    publication = _get_publication(db, workspace_id, publication_id)
+    job = enqueue_publication_record(db, workspace_id, publication)
+    notify_workers(
+        Redis.from_url(
+            settings.redis_url,
+            socket_connect_timeout=0.5,
+            socket_timeout=0.5,
+        ),
+        str(job.id),
+    )
+    return job

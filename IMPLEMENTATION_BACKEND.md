@@ -159,7 +159,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] Définir `validate_media()` avec les limites propres à chaque plateforme.
 - [x] Définir `publish()`, `get_status()`, `cancel()` et `refresh_credentials()`.
 - [x] Normaliser les erreurs : autorisation, validation, quota, modération, réseau et erreur temporaire.
-- [ ] Préserver les réponses brutes utiles dans un champ JSON interne, sans secret.
+- [x] Préserver les réponses brutes utiles dans un champ JSON interne, sans secret.
 
 ### Expérience de création d'une publication
 
@@ -208,7 +208,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 
 - [x] Choisir l'orchestration : PostgreSQL durable avec leases, Redis comme signal de réveil et polling de secours.
 - [ ] Sortir les traitements longs des processus API et Telegram.
-- [~] Rendre chaque étape idempotente et rejouable (`INGEST`, `PROCESS` et `RENDER` ajoutés ; publication restante).
+- [~] Rendre chaque étape idempotente et rejouable (`INGEST`, `PROCESS` et `RENDER` terminés ; `PUBLISH` protégé en base, réconciliation fournisseur restante).
 - [~] Ajouter heartbeat, timeout, reprise, annulation et limite de concurrence par workspace (leases et reprise PostgreSQL terminées ; limite par workspace restante).
 - [ ] Émettre la progression par polling initialement, puis SSE si nécessaire.
 
