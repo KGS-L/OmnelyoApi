@@ -35,9 +35,11 @@ chmod 600 .env
 ```
 
 Le fichier `.env` reste uniquement sur le VPS. Au premier déploiement, le
-workflow appelle `scripts/bootstrap-vps-env.sh`. Si `.env` est absent ou vide,
-le script part de `.env.production.example` et génère des valeurs uniques pour
-PostgreSQL, Redis et JWT. Un fichier existant et non vide n'est jamais modifié.
+workflow appelle `scripts/bootstrap-vps-env.sh`. Le script compare `.env` à
+`.env.production.example`, ajoute seulement les variables absentes et génère des
+valeurs uniques pour PostgreSQL, Redis et JWT si nécessaire. Toute valeur déjà
+renseignée est conservée : Resend, Telegram et les autres intégrations ne sont
+jamais écrasés.
 
 Les clés externes laissées vides (Resend, Telegram, paiements, OAuth, R2 et IA)
 doivent ensuite être renseignées sur le VPS. Le premier déploiement peut donc
