@@ -13,17 +13,16 @@ Créer un environnement GitHub nommé `staging`. Une approbation manuelle peut y
 
 | Secret | Valeur attendue |
 |---|---|
-| `VPS_HOST` | adresse IPv4 ou nom DNS du VPS |
-| `VPS_PORT` | port SSH, généralement `22` |
-| `VPS_USER` | utilisateur de déploiement non-root |
-| `VPS_SSH_PRIVATE_KEY` | clé privée dédiée au déploiement |
-| `VPS_KNOWN_HOSTS` | sortie vérifiée de `ssh-keyscan -H -p PORT HOTE` |
 | `VPS_BACKEND_PATH` | `/home/admin/projects/omnelyo-backend` par exemple |
 | `GHCR_USERNAME` | compte GitHub autorisé à lire le package |
 | `GHCR_TOKEN` | token GitHub limité à `read:packages` |
 
 Le `GITHUB_TOKEN` du workflow publie l'image. Le token GHCR dédié sert seulement
 au téléchargement privé depuis le VPS.
+
+Le job `deploy` utilise un runner GitHub auto-hébergé sur le VPS avec les labels
+standards `self-hosted`, `Linux` et `X64`. La connexion du runner vers GitHub est
+sortante : aucun accès SSH entrant depuis les runners GitHub n'est nécessaire.
 
 ## Préparation unique du VPS
 

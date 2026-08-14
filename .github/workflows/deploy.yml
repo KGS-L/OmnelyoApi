@@ -27,6 +27,7 @@ jobs:
     timeout-minutes: 20
     outputs:
       image: ${{ steps.image.outputs.ref }}
+      source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - name: Resolve source revision
         id: source
@@ -73,61 +74,36 @@ jobs:
 
   deploy:
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 15
     environment: staging
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.publish.outputs.source_sha }}
 
-      - name: Prepare verified SSH access
+      - name: Install deployment manifests locally
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
-
-      - name: Upload deployment manifests
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          VPS_USER: ${{ secrets.VPS_USER }}
           VPS_BACKEND_PATH: ${{ secrets.VPS_BACKEND_PATH }}
         run: |
-          ssh -p "$VPS_PORT" -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
-            "install -d -m 750 '$VPS_BACKEND_PATH' '$VPS_BACKEND_PATH/scripts'"
-          scp -P "$VPS_PORT" -i ~/.ssh/deploy_key \
-            docker-compose.yml docker-compose.prod.yml .env.production.example \
-            "$VPS_USER@$VPS_HOST:$VPS_BACKEND_PATH/"
-          scp -P "$VPS_PORT" -i ~/.ssh/deploy_key \
-            scripts/bootstrap-vps-env.sh \
-            "$VPS_USER@$VPS_HOST:$VPS_BACKEND_PATH/scripts/"
+          test -n "$VPS_BACKEND_PATH"
+          install -d -m 750 "$VPS_BACKEND_PATH" "$VPS_BACKEND_PATH/scripts"
+          install -m 640 docker-compose.yml docker-compose.prod.yml \
+            .env.production.example "$VPS_BACKEND_PATH/"
+          install -m 750 scripts/bootstrap-vps-env.sh \
+            "$VPS_BACKEND_PATH/scripts/bootstrap-vps-env.sh"
 
       - name: Deploy immutable image and verify health
         env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          VPS_USER: ${{ secrets.VPS_USER }}
           VPS_BACKEND_PATH: ${{ secrets.VPS_BACKEND_PATH }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           TARGET_IMAGE: ${{ needs.publish.outputs.image }}
-          HEALTHCHECK_URL: https://api-omnelyo.kgslab.com/health
+          HEALTHCHECK_URL: http://127.0.0.1:8000/health
         run: |
-          printf '%s' "$GHCR_TOKEN" | ssh -p "$VPS_PORT" -i ~/.ssh/deploy_key \
-            "$VPS_USER@$VPS_HOST" \
-            "docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin"
-
-          ssh -p "$VPS_PORT" -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
-            bash -s -- "$VPS_BACKEND_PATH" "$TARGET_IMAGE" "$HEALTHCHECK_URL" <<'REMOTE'
           set -Eeuo pipefail
-          project_path="$1"
-          target_image="$2"
-          healthcheck_url="$3"
-          cd "$project_path"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+          cd "$VPS_BACKEND_PATH"
 
           bash scripts/bootstrap-vps-env.sh .env.production.example .env
           compose=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
@@ -139,20 +115,20 @@ jobs:
 
           rollback() {
             trap - ERR
-            if [[ -n "$previous_image" && "$previous_image" != "$target_image" ]]; then
+            if [[ -n "$previous_image" && "$previous_image" != "$TARGET_IMAGE" ]]; then
               echo "Healthcheck en échec, retour à l'image précédente."
               BACKEND_IMAGE="$previous_image" "${compose[@]}" up -d --no-build --remove-orphans api worker shortpilot-bot
             fi
           }
           trap rollback ERR
 
-          BACKEND_IMAGE="$target_image" "${compose[@]}" pull api migrate worker shortpilot-bot
-          BACKEND_IMAGE="$target_image" "${compose[@]}" run --rm migrate
-          BACKEND_IMAGE="$target_image" "${compose[@]}" up -d --no-build --remove-orphans postgres redis api worker shortpilot-bot
+          BACKEND_IMAGE="$TARGET_IMAGE" "${compose[@]}" pull api migrate worker shortpilot-bot
+          BACKEND_IMAGE="$TARGET_IMAGE" "${compose[@]}" run --rm migrate
+          BACKEND_IMAGE="$TARGET_IMAGE" "${compose[@]}" up -d --no-build --remove-orphans postgres redis api worker shortpilot-bot
 
           healthy=false
           for attempt in {1..20}; do
-            if curl --fail --silent --show-error --max-time 10 "$healthcheck_url" >/dev/null; then
+            if curl --fail --silent --show-error --max-time 10 "$HEALTHCHECK_URL" >/dev/null; then
               healthy=true
               break
             fi
@@ -160,8 +136,7 @@ jobs:
           done
           [[ "$healthy" == true ]]
 
-          printf '%s\n' "$target_image" > "$state_file"
+          printf '%s\n' "$TARGET_IMAGE" > "$state_file"
           trap - ERR
           "${compose[@]}" ps
           docker image prune -f --filter "until=168h"
-          REMOTE
