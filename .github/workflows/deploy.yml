@@ -87,11 +87,15 @@ jobs:
           VPS_BACKEND_PATH: ${{ secrets.VPS_BACKEND_PATH }}
         run: |
           test -n "$VPS_BACKEND_PATH"
-          install -d -m 750 "$VPS_BACKEND_PATH" "$VPS_BACKEND_PATH/scripts"
+          install -d -m 750 "$VPS_BACKEND_PATH" "$VPS_BACKEND_PATH/scripts" "$VPS_BACKEND_PATH/deploy" "$VPS_BACKEND_PATH/deploy/nginx"
           install -m 640 docker-compose.yml docker-compose.prod.yml \
             .env.production.example "$VPS_BACKEND_PATH/"
-          install -m 750 scripts/bootstrap-vps-env.sh \
-            "$VPS_BACKEND_PATH/scripts/bootstrap-vps-env.sh"
+          if [ -d scripts ]; then
+            install -m 750 scripts/*.sh "$VPS_BACKEND_PATH/scripts/"
+          fi
+          if [ -d deploy/nginx ]; then
+            install -m 640 deploy/nginx/* "$VPS_BACKEND_PATH/deploy/nginx/"
+          fi
 
       - name: Deploy immutable image and verify health
         env:
