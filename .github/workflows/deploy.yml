@@ -138,5 +138,5 @@ jobs:
 
           printf '%s\n' "$TARGET_IMAGE" > "$state_file"
           trap - ERR
-          "${compose[@]}" ps
+          BACKEND_IMAGE="$TARGET_IMAGE" "${compose[@]}" ps
           docker image prune -f --filter "until=168h"
