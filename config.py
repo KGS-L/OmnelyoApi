@@ -101,7 +101,10 @@ MANUAL_PAYMENT_INSTRUCTIONS = os.getenv(
 )
 
 # --- DB ---
-DATABASE_PATH = BASE_DIR / os.getenv("DATABASE_PATH", "db/shortpilot.sqlite3")
+_db_env = os.getenv("DATABASE_PATH", "db/shortpilot.sqlite3")
+_db_path = Path(_db_env)
+DATABASE_PATH = _db_path if _db_path.is_absolute() else BASE_DIR / _db_path
+DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # --- Storage locale ---
 TMP_DIR = BASE_DIR / "storage" / "tmp"

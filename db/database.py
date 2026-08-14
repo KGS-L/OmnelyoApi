@@ -8,6 +8,7 @@ import config
 
 def get_connection() -> sqlite3.Connection:
     """Ouvre (et crée si besoin) la connexion à la DB SQLite."""
+    config.DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(config.DATABASE_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
