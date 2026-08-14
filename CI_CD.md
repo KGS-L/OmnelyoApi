@@ -50,6 +50,8 @@ API_ENVIRONMENT=production
 APP_DOMAIN=omnelyo.kgslab.com
 API_DOMAIN=api-omnelyo.kgslab.com
 BOT_DOMAIN=bot-omnelyo.kgslab.com
+API_HOST_PORT=8100
+BOT_HOST_PORT=8420
 WEB_APP_URL=https://omnelyo.kgslab.com
 FRONTEND_ORIGINS=https://omnelyo.kgslab.com
 
@@ -120,6 +122,6 @@ sudo bash scripts/configure-nginx.sh --email admin@example.com
 Si Certbot est absent sur un VPS Ubuntu/Debian, le script installe
 automatiquement `certbot` et `python3-certbot-nginx` avec `apt-get`.
 
-Le script configure uniquement les proxys locaux du backend : API `8000` et bot
+Le script configure uniquement les proxys locaux du backend : API `8100` et bot
 `8420`. Le domaine frontend et son port `3000` restent sous la responsabilité
 du dépôt frontend. Le workflow de déploiement ne réexécute pas ce script.

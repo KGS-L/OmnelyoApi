@@ -99,7 +99,7 @@ jobs:
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           TARGET_IMAGE: ${{ needs.publish.outputs.image }}
-          HEALTHCHECK_URL: http://127.0.0.1:8000/health
+          HEALTHCHECK_URL: http://127.0.0.1:8100/health
         run: |
           set -Eeuo pipefail
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
