@@ -15,6 +15,7 @@ from api.integrations.media_validation import validate_publication_preflight
 from api.integrations.social import SocialPublisherError
 from api.models import (
     Channel,
+    ChannelPlatform,
     ChannelStatus,
     Job,
     JobStatus,
@@ -65,10 +66,10 @@ def _ensure_targets_in_workspace(
     db: Session,
     workspace_id: uuid.UUID,
     video_id: uuid.UUID | None,
-    asset_ids: list[uuid.UUID],
     channel_id: uuid.UUID,
+    asset_ids: list[uuid.UUID] | None = None,
 ) -> None:
-    _ensure_media_in_workspace(db, workspace_id, video_id, asset_ids)
+    _ensure_media_in_workspace(db, workspace_id, video_id, asset_ids or [])
     channel_state = db.execute(
         select(Channel.status, SocialConnection.status)
         .outerjoin(SocialConnection, SocialConnection.id == Channel.connection_id)
@@ -390,7 +391,7 @@ def create_publication(
     db: Annotated[Session, Depends(get_db)],
 ) -> Publication:
     _ensure_targets_in_workspace(
-        db, workspace_id, payload.video_id, payload.asset_ids, payload.channel_id
+        db, workspace_id, payload.video_id, payload.channel_id, payload.asset_ids
     )
     _validate_future_schedule(payload.scheduled_at)
     values = payload.model_dump(exclude={"asset_ids"})
