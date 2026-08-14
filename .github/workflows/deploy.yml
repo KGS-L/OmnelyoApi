@@ -1,55 +1,177 @@
-name: Deploy production
+name: Deploy backend staging
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Commit, tag ou branche à déployer"
-        required: true
-        default: main
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
-  group: production
+  group: backend-staging
   cancel-in-progress: false
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/omnelyo-backend
+
 jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: omnelyo_ci
+          POSTGRES_USER: omnelyo
+          POSTGRES_PASSWORD: ci-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U omnelyo -d omnelyo_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      API_ENVIRONMENT: test
+      API_DATABASE_URL: postgresql+psycopg://omnelyo:ci-password@localhost:5432/omnelyo_ci
+      API_JWT_SECRET: ci-only-secret-with-at-least-32-characters
+    outputs:
+      image: ${{ steps.image.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install test dependencies
+        run: pip install -r requirements-ci.txt
+
+      - name: Run tests and migrations
+        run: |
+          python -B -m unittest discover -s tests -v
+          python -m compileall -q api billing bot core db scheduler workers tests migrations
+          alembic upgrade head
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve immutable image name
+        id: image
+        run: echo "ref=${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and publish backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.ref }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+
   deploy:
+    needs: verify-and-publish
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: staging
     steps:
-      - name: Prepare SSH
+      - uses: actions/checkout@v5
+
+      - name: Prepare verified SSH access
         env:
           SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
-          VPS_HOST_KEY: ${{ secrets.VPS_HOST_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "$VPS_HOST_KEY" > ~/.ssh/known_hosts
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-      - name: Deploy selected revision
+
+      - name: Upload deployment manifests
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
           VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PROJECT_PATH: ${{ secrets.VPS_PROJECT_PATH }}
-          DEPLOY_REF: ${{ inputs.ref }}
+          VPS_BACKEND_PATH: ${{ secrets.VPS_BACKEND_PATH }}
         run: |
-          ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" bash -s -- "$VPS_PROJECT_PATH" "$DEPLOY_REF" <<'REMOTE'
-          set -euo pipefail
+          ssh -p "$VPS_PORT" -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+            "install -d -m 750 '$VPS_BACKEND_PATH' '$VPS_BACKEND_PATH/scripts'"
+          scp -P "$VPS_PORT" -i ~/.ssh/deploy_key \
+            docker-compose.yml docker-compose.prod.yml .env.production.example \
+            "$VPS_USER@$VPS_HOST:$VPS_BACKEND_PATH/"
+          scp -P "$VPS_PORT" -i ~/.ssh/deploy_key \
+            scripts/bootstrap-vps-env.sh \
+            "$VPS_USER@$VPS_HOST:$VPS_BACKEND_PATH/scripts/"
+
+      - name: Deploy immutable image and verify health
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_BACKEND_PATH: ${{ secrets.VPS_BACKEND_PATH }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          TARGET_IMAGE: ${{ needs.verify-and-publish.outputs.image }}
+          HEALTHCHECK_URL: https://api-omnelyo.kgslab.com/health
+        run: |
+          printf '%s' "$GHCR_TOKEN" | ssh -p "$VPS_PORT" -i ~/.ssh/deploy_key \
+            "$VPS_USER@$VPS_HOST" \
+            "docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin"
+
+          ssh -p "$VPS_PORT" -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+            bash -s -- "$VPS_BACKEND_PATH" "$TARGET_IMAGE" "$HEALTHCHECK_URL" <<'REMOTE'
+          set -Eeuo pipefail
           project_path="$1"
-          deploy_ref="$2"
+          target_image="$2"
+          healthcheck_url="$3"
           cd "$project_path"
-          git fetch --prune --tags origin
-          if git rev-parse --verify "origin/$deploy_ref^{commit}" >/dev/null 2>&1; then
-            target="origin/$deploy_ref"
-          else
-            target="$deploy_ref"
+
+          bash scripts/bootstrap-vps-env.sh .env.production.example .env
+          compose=(docker compose -f docker-compose.yml -f docker-compose.prod.yml)
+          state_file=.deployed-backend-image
+          previous_image=""
+          if [[ -f "$state_file" ]]; then
+            previous_image="$(tr -d '\r\n' < "$state_file")"
           fi
-          git checkout --detach "$target"
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml build
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
-          docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+
+          rollback() {
+            trap - ERR
+            if [[ -n "$previous_image" && "$previous_image" != "$target_image" ]]; then
+              echo "Healthcheck en échec, retour à l'image précédente."
+              BACKEND_IMAGE="$previous_image" "${compose[@]}" up -d --no-build --remove-orphans api worker shortpilot-bot
+            fi
+          }
+          trap rollback ERR
+
+          BACKEND_IMAGE="$target_image" "${compose[@]}" pull api migrate worker shortpilot-bot
+          BACKEND_IMAGE="$target_image" "${compose[@]}" run --rm migrate
+          BACKEND_IMAGE="$target_image" "${compose[@]}" up -d --no-build --remove-orphans postgres redis api worker shortpilot-bot
+
+          healthy=false
+          for attempt in {1..20}; do
+            if curl --fail --silent --show-error --max-time 10 "$healthcheck_url" >/dev/null; then
+              healthy=true
+              break
+            fi
+            sleep 3
+          done
+          [[ "$healthy" == true ]]
+
+          printf '%s\n' "$target_image" > "$state_file"
+          trap - ERR
+          "${compose[@]}" ps
+          docker image prune -f --filter "until=168h"
           REMOTE

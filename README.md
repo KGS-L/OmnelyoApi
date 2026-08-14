@@ -356,20 +356,22 @@ python -B -m unittest tests.integration_workspace_postgres -v
 
 ## Déploiement en production
 
-Configure `BOT_DOMAIN` et `API_DOMAIN` dans le `.env` du VPS, puis lance :
+Configure les secrets et domaines dans le `.env` du VPS. Pour un lancement
+manuel exceptionnel avec une image déjà publiée :
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+BACKEND_IMAGE=ghcr.io/OWNER/omnelyo-backend:COMMIT_SHA \
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
 docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
 ```
 
 N'ajoute pas `docker-compose.override.yml` à cette commande : il expose les bases
-et monte le code local pour le développement. En production, Caddy expose
-uniquement les ports 80/443 et fournit HTTPS aux domaines du bot et de l'API.
+et monte le code local pour le développement. En production, Nginx et Certbot
+exposent uniquement les ports 80/443 et fournissent HTTPS.
 
-Le workflow **Deploy production** est déclenché manuellement depuis GitHub
-Actions. Les secrets VPS nécessaires et le fonctionnement du déploiement sont
+Le workflow **Deploy backend staging** est déclenché sur `main` ou manuellement.
+Les secrets VPS nécessaires et le fonctionnement du déploiement sont
 documentés dans [CI_CD.md](CI_CD.md).
 
 ## Sécurité

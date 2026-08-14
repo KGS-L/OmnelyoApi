@@ -1,6 +1,7 @@
 # Secrets et configuration locale
 .env
 .env.*
+!.env.production.example
 !.env.example
 credentials/
 data.json
