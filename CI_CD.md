@@ -11,11 +11,11 @@ correspondant au SHA Git, jamais seulement `staging-latest`.
 Créer un environnement GitHub nommé `staging`. Une approbation manuelle peut y
 être activée si chaque déploiement doit être validé.
 
-| Secret | Valeur attendue |
-|---|---|
-| `VPS_BACKEND_PATH` | `/home/admin/projects/omnelyo-backend` par exemple |
-| `GHCR_USERNAME` | compte GitHub autorisé à lire le package |
-| `GHCR_TOKEN` | token GitHub limité à `read:packages` |
+| Secret             | Valeur attendue                          |
+| ------------------ | ---------------------------------------- |
+| `VPS_BACKEND_PATH` | `/home/admin/projects/omnelyo/backend`   |
+| `GHCR_USERNAME`    | compte GitHub autorisé à lire le package |
+| `GHCR_TOKEN`       | token GitHub limité à `read:packages`    |
 
 Le `GITHUB_TOKEN` du workflow publie l'image. Le token GHCR dédié sert seulement
 au téléchargement privé depuis le VPS.
@@ -27,8 +27,8 @@ sortante : aucun accès SSH entrant depuis les runners GitHub n'est nécessaire.
 ## Préparation unique du VPS
 
 ```bash
-install -d -m 750 /home/admin/projects/omnelyo-backend
-cd /home/admin/projects/omnelyo-backend
+install -d -m 750 /home/admin/projects/omnelyo/backend
+cd /home/admin/projects/omnelyo/backend
 touch .env
 chmod 600 .env
 ```
@@ -87,7 +87,7 @@ précédente. Il ne rétrograde jamais automatiquement la base de données.
 Rollback manuel :
 
 ```bash
-cd /home/admin/projects/omnelyo-backend
+cd /home/admin/projects/omnelyo/backend
 export BACKEND_IMAGE='ghcr.io/PROPRIETAIRE/omnelyo-backend:SHA_PRECEDENT'
 docker compose -f docker-compose.yml -f docker-compose.prod.yml pull api worker shortpilot-bot
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build api worker shortpilot-bot
@@ -106,7 +106,7 @@ une configuration Omnelyo existante et exécute `nginx -t` avant le rechargement
 Après avoir copié `scripts/configure-nginx.sh` et `deploy/nginx/` sur le VPS :
 
 ```bash
-cd /home/admin/projects/omnelyo-backend
+cd /home/admin/projects/omnelyo/backend
 sudo bash scripts/configure-nginx.sh --no-tls
 ```
 
