@@ -1,9 +1,10 @@
 # CI/CD backend Omnelyo
 
-Le workflow `.github/workflows/deploy.yml` teste le backend, construit une image
-unique pour l'API, les migrations, le worker et le bot, puis la publie dans
-GitHub Container Registry. Le VPS déploie toujours le tag immuable correspondant
-au SHA Git, jamais seulement `staging-latest`.
+Le workflow `.github/workflows/ci.yml` teste le backend sur chaque push et pull
+request. Après une CI réussie sur `main`, `.github/workflows/deploy.yml` construit
+une image unique pour l'API, les migrations, le worker et le bot, puis la publie
+dans GitHub Container Registry. Le VPS déploie toujours le tag immuable
+correspondant au SHA Git, jamais seulement `staging-latest`.
 
 ## Configuration GitHub
 
