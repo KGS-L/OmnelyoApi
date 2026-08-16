@@ -8,6 +8,7 @@ import logging
 import uuid
 from pathlib import Path
 from telegram import BotCommand, Update
+from telegram.error import Conflict
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 import config
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 # Références globales pour communiquer avec le bot depuis le thread Flask (OAuth Callback)
 _application: Application | None = None
 _loop: asyncio.AbstractEventLoop | None = None
+_conflit_getupdates_journalise = False
 
 
 # =============================================================================
@@ -456,10 +458,10 @@ def register_handlers(app: Application) -> None:
     """Enregistre tous les handlers de commandes et de messages."""
     global _application
     _application = app
-    
-    # Enregistrer le callback post-connexion auprès d'oauth_server
+
+    # Enregistrer le callback post-connexion auprès de oauth_server
     oauth_server.set_on_connected_callback(_on_youtube_connected)
-    
+
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_start))
     app.add_handler(CommandHandler("status", cmd_status))
@@ -468,6 +470,32 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("disconnect", cmd_disconnect_shortpilot))
     app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_upload))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_error_handler(on_error)
+
+
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Journalise les erreurs du polling et des handlers avec un message actionnable."""
+    global _conflit_getupdates_journalise
+    error = context.error
+    if isinstance(error, Conflict):
+        # Telegram n'autorise qu'un seul getUpdates par token : un autre
+        # processus (bot du VPS/prod, autre session locale) le consomme déjà.
+        # Le message complet n'est émis qu'une fois, le polling ré-essayant
+        # de lui-même toutes les quelques secondes.
+        if not _conflit_getupdates_journalise:
+            _conflit_getupdates_journalise = True
+            logger.error(
+                "Conflit getUpdates : un autre processus utilise déjà ce token "
+                "(bot du VPS/prod ?). Telegram n'accepte qu'une seule instance "
+                "par bot. En local, utilisez un token de dev distinct créé via "
+                "@BotFather, ou arrêtez l'autre instance."
+            )
+        return
+    logger.error(
+        "Erreur non gérée lors du traitement de la mise à jour %s.",
+        update,
+        exc_info=error,
+    )
 
 
 async def post_init(app: Application) -> None:
