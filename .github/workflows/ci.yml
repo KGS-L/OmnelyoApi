@@ -45,6 +45,10 @@ jobs:
           cache-dependency-path: requirements-ci.txt
       - name: Install CI dependencies
         run: pip install -r requirements-ci.txt
+      - name: Lint
+        run: |
+          pip install -q ruff
+          ruff check .
       - name: Unit tests
         run: python -B -m coverage run -m unittest discover -s tests -v
       - name: Coverage report

@@ -53,8 +53,20 @@ ruff check .                     # config dans pyproject.toml
 - Tests en style `unittest` ; les fichiers de test portent le préfixe `test_`,
   sauf `tests/integration_workspace_postgres.py` qui est invoquée explicitement
   par nom de module.
-- Écrire la documentation et les messages de commit en français, comme le reste
-  du dépôt.
+- Documentation rédigée en français ; messages de commit en conventionnel
+  anglais (`type(scope): summary`), comme l'historique du dépôt.
+
+## BMAD
+
+La méthode BMAD v6 est installée dans ce dépôt :
+
+- skills invoquables dans `.agents/skills/` (découverts automatiquement) ;
+- cœur et agents vendored dans `_bmad/` — ne pas modifier, écrasés par
+  `npx bmad-method install` ;
+- artefacts de planification dans `docs/planning/`, d'implémentation dans
+  `docs/implementation/` ;
+- `uv` est requis par les skills `bmad-build` (installé sur le poste) ;
+- en cas de doute sur le workflow : invoquer le skill `bmad-help`.
 
 ## Documentation de référence
 
