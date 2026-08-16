@@ -68,9 +68,9 @@ WELCOME_UNLINKED = (
     "and Facebook.\n\n"
     "🔐 <b>Connect your ShortPilot account to continue</b>\n\n"
     f'1. <a href="{html.escape(config.WEB_APP_URL, quote=True)}">Open the ShortPilot web app</a> and sign in.\n'
-    "2. Open <b>Settings → Integrations → Telegram</b>.\n"
-    "3. Select <b>Connect Telegram</b>.\n"
-    "4. Return here through the secure one-time link.\n\n"
+    "2. Open <b>Connexions</b> in the dashboard menu.\n"
+    "3. Select <b>Connecter Telegram</b>, then open the secure one-time link.\n"
+    "4. Press <b>Start</b> here in Telegram to finish the connection.\n\n"
     "ShortPilot will never ask for your password or payment details in Telegram.\n\n"
     f'🌐 <a href="{html.escape(config.WEB_APP_URL, quote=True)}">{html.escape(config.WEB_APP_URL)}</a>'
 )
