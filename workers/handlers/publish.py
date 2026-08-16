@@ -1,24 +1,26 @@
 """Publication d'une vidéo rendue via l'adaptateur social de sa destination."""
+import logging
 import shutil
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import select
 
 from api.config import get_settings
 from api.database import SessionLocal
+from api.integrations.default_publishers import register_default_publishers
 from api.integrations.social import (
     PublisherCredentials,
     PublishRequest,
     PublishResult,
+    SocialErrorCode,
+    SocialPublisherError,
     social_publishers,
 )
-from api.integrations.youtube import YouTubePublisher
-from api.integrations.tiktok import TikTokPublisher
-from api.integrations.facebook import FacebookPublisher
-from api.integrations.instagram import InstagramPublisher
 from api.models import (
     Channel,
     ChannelPlatform,
@@ -37,6 +39,8 @@ from api.models import (
 )
 from api.security.social_credentials import SocialCredentialCipher
 from workers.registry import JobDeferred, registry
+
+logger = logging.getLogger(__name__)
 
 PUBLISHED_PROVIDER_STATUSES = frozenset({
     "published", "publish_complete", "public", "private", "unlisted", "ready",
@@ -67,18 +71,21 @@ def publish_video(job: Job, heartbeat) -> dict:
 
     context = _load_context(job)
     settings = get_settings()
-    _register_publishers(settings)
+    register_default_publishers(settings)
     publisher = social_publishers.get(context.platform)
     credentials = _load_credentials(context.connection_id, settings.social_credentials_key)
     if _needs_refresh(credentials):
-        credentials = publisher.refresh_credentials(credentials)
-        _persist_credentials(
-            context.connection_id, credentials, settings.social_credentials_key
+        credentials = _refresh_and_persist(
+            publisher, context.connection_id, credentials, settings.social_credentials_key
         )
     if context.existing_external_id:
         _require_lease(heartbeat, "avant la vérification fournisseur", 90)
-        provider_status = publisher.get_status(
-            credentials, context.existing_external_id
+        provider_status = _call_with_reactive_refresh(
+            publisher,
+            context.connection_id,
+            credentials,
+            settings.social_credentials_key,
+            lambda creds: publisher.get_status(creds, context.existing_external_id),
         )
         return _persist_reconciliation(context, provider_status)
 
@@ -125,8 +132,12 @@ def publish_video(job: Job, heartbeat) -> dict:
         )
         publisher.validate_media(request)
         _require_lease(heartbeat, "avant l'envoi vers la plateforme", 60)
-        result = publisher.publish(
-            credentials, context.channel_external_id, request
+        result = _call_with_reactive_refresh(
+            publisher,
+            context.connection_id,
+            credentials,
+            settings.social_credentials_key,
+            lambda creds: publisher.publish(creds, context.channel_external_id, request),
         )
         persisted = _persist_result(context, result)
         if result.status.lower() in {"processing", "pending", "in_progress"}:
@@ -141,29 +152,140 @@ def publish_video(job: Job, heartbeat) -> dict:
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
-def _register_publishers(settings) -> None:
-    if not social_publishers.has(ChannelPlatform.YOUTUBE):
-        social_publishers.register(
-            YouTubePublisher(settings.youtube_client_secrets_file)
+def _refresh_credentials_locked(
+    connection_id: uuid.UUID,
+    publisher,
+    credentials: PublisherCredentials,
+    key: str,
+) -> PublisherCredentials:
+    """Rafraîchit et persiste les credentials sous verrou de la ligne connexion.
+
+    Le verrou (`FOR UPDATE`) sérialise les rafraîchissements concurrents d'une
+    même connexion — TikTok fait tourner son refresh token à chaque échange :
+    si un concurrent a déjà persisté des credentials à jour, ils sont adoptés
+    tels quels au lieu de rejouer l'échange avec des secrets périmés.
+    """
+    cipher = SocialCredentialCipher(key)
+    with SessionLocal() as db:
+        connection = db.execute(
+            select(SocialConnection)
+            .where(SocialConnection.id == connection_id)
+            .with_for_update()
+        ).scalar_one_or_none()
+        if connection is None:
+            raise ValueError("La connexion sociale est introuvable.")
+        current = PublisherCredentials(
+            access_token=cipher.decrypt(connection.access_token_encrypted),
+            refresh_token=(
+                cipher.decrypt(connection.refresh_token_encrypted)
+                if connection.refresh_token_encrypted
+                else None
+            ),
+            scopes=list(connection.scopes or []),
+            expires_at=connection.expires_at,
         )
-    if not social_publishers.has(ChannelPlatform.TIKTOK):
-        social_publishers.register(TikTokPublisher(
-            settings.tiktok_client_key,
-            settings.tiktok_client_secret,
-            settings.tiktok_sandbox_mode,
-        ))
-    if not social_publishers.has(ChannelPlatform.FACEBOOK):
-        social_publishers.register(FacebookPublisher(
-            settings.meta_app_id,
-            settings.meta_app_secret,
-            settings.meta_graph_api_version,
-        ))
-    if not social_publishers.has(ChannelPlatform.INSTAGRAM):
-        social_publishers.register(InstagramPublisher(
-            settings.meta_app_id,
-            settings.meta_app_secret,
-            settings.meta_graph_api_version,
-        ))
+        if current != credentials and not _needs_refresh(current):
+            return current
+        refreshed = publisher.refresh_credentials(current)
+        connection.access_token_encrypted = cipher.encrypt(refreshed.access_token)
+        if refreshed.refresh_token:
+            connection.refresh_token_encrypted = cipher.encrypt(
+                refreshed.refresh_token
+            )
+        connection.scopes = refreshed.scopes
+        connection.expires_at = refreshed.expires_at
+        connection.last_verified_at = datetime.now(timezone.utc)
+        db.commit()
+        return refreshed
+
+
+def _refresh_and_persist(
+    publisher,
+    connection_id: uuid.UUID,
+    credentials: PublisherCredentials,
+    key: str,
+) -> PublisherCredentials:
+    """Rafraîchit préventivement les credentials sous verrou de ligne.
+
+    Seul un échec d'autorisation met la connexion en quarantaine : une erreur
+    transitoire (réseau, saturation fournisseur) laisse la connexion active.
+    """
+    try:
+        return _refresh_credentials_locked(connection_id, publisher, credentials, key)
+    except SocialPublisherError as exc:
+        if exc.code is SocialErrorCode.AUTHORIZATION:
+            _quarantine_connection(connection_id)
+        raise
+
+
+def _call_with_reactive_refresh(
+    publisher,
+    connection_id: uuid.UUID,
+    credentials: PublisherCredentials,
+    key: str,
+    operation: Callable[[PublisherCredentials], Any],
+):
+    """Exécute l'appel fournisseur avec un unique rafraîchissement réactif.
+
+    Un refus AUTHORIZATION déclenche un rafraîchissement unique sous verrou de
+    ligne, persisté chiffré, puis une seconde et dernière tentative. Si le
+    rafraîchissement échoue pour un problème d'autorisation, la connexion est
+    mise en quarantaine (EXPIRED + canaux DISCONNECTED) ; dans tous les cas
+    l'erreur fournisseur d'origine est relancée telle quelle. Un second refus
+    AUTHORIZATION après un rafraîchissement réussi met aussi la connexion en
+    quarantaine : le token mort ne doit pas rester ACTIVE.
+    """
+    try:
+        return operation(credentials)
+    except SocialPublisherError as exc:
+        if exc.code is not SocialErrorCode.AUTHORIZATION:
+            raise
+        original = exc
+    try:
+        refreshed = _refresh_credentials_locked(
+            connection_id, publisher, credentials, key
+        )
+    except SocialPublisherError as refresh_exc:
+        if refresh_exc.code is SocialErrorCode.AUTHORIZATION:
+            _quarantine_connection(connection_id)
+        raise original
+    except Exception:
+        raise original
+    try:
+        return operation(refreshed)
+    except SocialPublisherError as exc:
+        if exc.code is SocialErrorCode.AUTHORIZATION:
+            _quarantine_connection(connection_id)
+        raise
+
+
+def _quarantine_connection(connection_id: uuid.UUID) -> None:
+    """Marque la connexion EXPIRED et ses canaux DISCONNECTED (best-effort)."""
+    try:
+        with SessionLocal() as db:
+            connection = db.get(SocialConnection, connection_id)
+            if connection is None or connection.status is not SocialConnectionStatus.ACTIVE:
+                return
+            connection.status = SocialConnectionStatus.EXPIRED
+            for channel in db.scalars(
+                select(Channel).where(
+                    Channel.connection_id == connection.id,
+                    Channel.workspace_id == connection.workspace_id,
+                )
+            ):
+                channel.status = ChannelStatus.DISCONNECTED
+            db.commit()
+            logger.warning(
+                "La connexion sociale %s a été mise en quarantaine : statut EXPIRED "
+                "et canaux associés DISCONNECTED après un échec de rafraîchissement.",
+                connection_id,
+            )
+    except Exception:
+        logger.warning(
+            "Impossible de mettre en quarantaine la connexion sociale %s.",
+            connection_id,
+            exc_info=True,
+        )
 
 
 def _load_context(job: Job) -> PublishContext:
@@ -262,25 +384,6 @@ def _needs_refresh(credentials: PublisherCredentials) -> bool:
     if expiry.tzinfo is None:
         expiry = expiry.replace(tzinfo=timezone.utc)
     return expiry <= datetime.now(timezone.utc) + timedelta(minutes=5)
-
-
-def _persist_credentials(
-    connection_id: uuid.UUID, credentials: PublisherCredentials, key: str
-) -> None:
-    cipher = SocialCredentialCipher(key)
-    with SessionLocal() as db:
-        connection = db.get(SocialConnection, connection_id)
-        if connection is None:
-            raise ValueError("La connexion sociale est introuvable.")
-        connection.access_token_encrypted = cipher.encrypt(credentials.access_token)
-        if credentials.refresh_token:
-            connection.refresh_token_encrypted = cipher.encrypt(
-                credentials.refresh_token
-            )
-        connection.scopes = credentials.scopes
-        connection.expires_at = credentials.expires_at
-        connection.last_verified_at = datetime.now(timezone.utc)
-        db.commit()
 
 
 def _persist_result(context: PublishContext, result: PublishResult) -> dict:

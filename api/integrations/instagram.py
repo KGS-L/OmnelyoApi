@@ -24,6 +24,13 @@ SCOPES = [
     "instagram_basic",
     "instagram_content_publish",
 ]
+IG_ACCOUNT_FIELDS = "instagram_business_account{id,username,name,profile_picture_url}"
+# Codes d'erreur Graph API signalant un token invalide, expiré ou révoqué.
+TOKEN_ERROR_CODES = frozenset({190, 102, 10})
+TOKEN_ERROR_SUBCODES = frozenset({33})
+# Codes d'erreur Graph API signalant une saturation côté Meta.
+RATE_LIMIT_ERROR_CODES = frozenset({4, 17, 32, 613})
+ACCOUNTS_PAGE_SIZE = 100
 
 
 class InstagramPublisher(SocialPublisher):
@@ -59,7 +66,7 @@ class InstagramPublisher(SocialPublisher):
 
     def exchange_code(self, code: str, redirect_uri: str) -> list[OAuthGrant]:
         self._configured()
-        token = self._request(
+        short_token = self._request(
             "GET",
             "/oauth/access_token",
             params={
@@ -69,17 +76,8 @@ class InstagramPublisher(SocialPublisher):
                 "code": code,
             },
         )["access_token"]
-        pages = self._request(
-            "GET",
-            "/me/accounts",
-            token,
-            params={
-                "fields": (
-                    "id,name,access_token,"
-                    "instagram_business_account{id,username,name,profile_picture_url}"
-                )
-            },
-        ).get("data", [])
+        user_token = self._exchange_long_lived_token(short_token)["access_token"]
+        pages = self._list_accounts(user_token)
         grants = []
         for page in pages:
             account = page.get("instagram_business_account")
@@ -105,11 +103,71 @@ class InstagramPublisher(SocialPublisher):
             )
         return grants
 
-    def list_channels(self, credentials: PublisherCredentials) -> list[SocialChannel]:
-        raise SocialPublisherError(
-            SocialErrorCode.AUTHORIZATION,
-            "Reconnectez Meta pour actualiser les comptes Instagram accessibles.",
+    def _exchange_long_lived_token(self, token: str) -> dict:
+        """Échange un token contre sa version longue durée (réponse Graph complète)."""
+        data = self._request(
+            "GET",
+            "/oauth/access_token",
+            params={
+                "grant_type": "fb_exchange_token",
+                "client_id": self.app_id,
+                "client_secret": self.app_secret,
+                "fb_exchange_token": token,
+            },
         )
+        if not data.get("access_token"):
+            raise SocialPublisherError(
+                SocialErrorCode.AUTHORIZATION,
+                "Meta n'a pas retourné de token longue durée.",
+            )
+        return data
+
+    def _list_accounts(self, access_token: str) -> list[dict]:
+        """Parcourt `/me/accounts` en suivant les curseurs, sans doublon de Page."""
+        accounts: list[dict] = []
+        seen_pages: set[str] = set()
+        seen_cursors: set[str] = set()
+        after: str | None = None
+        while True:
+            params = {"fields": f"id,name,access_token,{IG_ACCOUNT_FIELDS}", "limit": ACCOUNTS_PAGE_SIZE}
+            if after:
+                params["after"] = after
+            payload = self._request("GET", "/me/accounts", access_token, params=params)
+            for page in payload.get("data", []):
+                page_id = page.get("id")
+                if page_id and page_id not in seen_pages:
+                    seen_pages.add(page_id)
+                    accounts.append(page)
+            paging = payload.get("paging") or {}
+            after = (paging.get("cursors") or {}).get("after")
+            if (
+                not paging.get("next")
+                or not after
+                or not payload.get("data")
+                or after in seen_cursors
+            ):
+                return accounts
+            seen_cursors.add(after)
+
+    def list_channels(self, credentials: PublisherCredentials) -> list[SocialChannel]:
+        page = self._request(
+            "GET",
+            "/me",
+            credentials.access_token,
+            params={"fields": f"id,name,picture,{IG_ACCOUNT_FIELDS}"},
+        )
+        account = page.get("instagram_business_account") or {}
+        account_id = account.get("id")
+        if not account_id:
+            return []
+        return [
+            SocialChannel(
+                external_id=account_id,
+                name=account.get("name") or account.get("username") or "Instagram",
+                handle=account.get("username"),
+                avatar_url=account.get("profile_picture_url"),
+            )
+        ]
 
     def validate_media(self, request: PublishRequest) -> None:
         paths = request.media_paths or (request.media_path,)
@@ -233,16 +291,7 @@ class InstagramPublisher(SocialPublisher):
         )
 
     def refresh_credentials(self, credentials):
-        data = self._request(
-            "GET",
-            "/oauth/access_token",
-            params={
-                "grant_type": "fb_exchange_token",
-                "client_id": self.app_id,
-                "client_secret": self.app_secret,
-                "fb_exchange_token": credentials.access_token,
-            },
-        )
+        data = self._exchange_long_lived_token(credentials.access_token)
         return PublisherCredentials(
             data["access_token"],
             None,
@@ -257,23 +306,34 @@ class InstagramPublisher(SocialPublisher):
             params["access_token"] = access_token
         try:
             response = requests.request(
-                method, self.graph_url + path, params=params, timeout=30, **kwargs
+                method,
+                self.graph_url + path,
+                params=params,
+                timeout=30,
+                **kwargs,
             )
             payload = response.json()
         except (requests.RequestException, ValueError) as exc:
             raise SocialPublisherError(
                 SocialErrorCode.NETWORK, "Meta est inaccessible.", retryable=True
             ) from exc
-        if response.status_code >= 400 or payload.get("error"):
-            error = payload.get("error", {})
-            code = (
-                SocialErrorCode.AUTHORIZATION
-                if response.status_code in {401, 403} or error.get("code") in {190, 200}
-                else SocialErrorCode.TEMPORARY
-            )
+        if response.status_code < 400 and not payload.get("error"):
+            return payload
+        error = payload.get("error") or {}
+        if not isinstance(error, dict):
+            error = {}
+        error_code = error.get("code")
+        if (
+            response.status_code in {401, 403}
+            or error_code in TOKEN_ERROR_CODES
+            or error.get("error_subcode") in TOKEN_ERROR_SUBCODES
+        ):
             raise SocialPublisherError(
-                code,
+                SocialErrorCode.AUTHORIZATION,
                 "Instagram a refusé l'opération.",
-                retryable=response.status_code >= 429,
             )
-        return payload
+        raise SocialPublisherError(
+            SocialErrorCode.TEMPORARY,
+            "Instagram a refusé l'opération.",
+            retryable=response.status_code >= 429 or error_code in RATE_LIMIT_ERROR_CODES,
+        )

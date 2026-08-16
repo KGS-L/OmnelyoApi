@@ -11,7 +11,11 @@ from sqlalchemy.orm import Session
 from api.config import APISettings, get_settings
 from api.database import get_db
 from api.dependencies import get_current_user, require_workspace_roles
-from api.integrations.social import SocialPublisherError, social_publishers
+from api.integrations.social import (
+    PublisherNotRegisteredError,
+    SocialPublisherError,
+    social_publishers,
+)
 from api.integrations.social_oauth import (
     SocialOAuthStateService,
     persist_oauth_grants,
@@ -50,7 +54,7 @@ def _callback_uri(settings: APISettings, platform: ChannelPlatform) -> str:
 def _publisher(platform: ChannelPlatform):
     try:
         return social_publishers.get(platform)
-    except SocialPublisherError as exc:
+    except PublisherNotRegisteredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 

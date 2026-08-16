@@ -33,6 +33,14 @@ class SocialPublisherError(RuntimeError):
         self.retryable = retryable
 
 
+class PublisherNotRegisteredError(RuntimeError):
+    """Adaptateur absent du registre : la plateforme n'est pas configurée côté serveur."""
+
+    def __init__(self, platform: ChannelPlatform) -> None:
+        super().__init__(f"La plateforme {platform.value} n'est pas encore configurée.")
+        self.platform = platform
+
+
 @dataclass(frozen=True)
 class SocialChannel:
     external_id: str
@@ -139,10 +147,7 @@ class SocialPublisherRegistry:
         try:
             return self._publishers[platform]
         except KeyError as exc:
-            raise SocialPublisherError(
-                SocialErrorCode.AUTHORIZATION,
-                f"La plateforme {platform.value} n'est pas encore connectée.",
-            ) from exc
+            raise PublisherNotRegisteredError(platform) from exc
 
     def has(self, platform: ChannelPlatform) -> bool:
         return platform in self._publishers

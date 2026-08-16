@@ -14,6 +14,10 @@ from api.models import ChannelPlatform, PublicationFormat, PublicationVisibility
 API_BASE = "https://open.tiktokapis.com"
 AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/"
 SCOPES = ["user.info.basic", "video.publish", "video.upload"]
+# Codes d'erreur TikTok signalant un token invalide ou expiré.
+TOKEN_ERROR_CODES = frozenset({"access_token_invalid", "access_token_expired"})
+# Code d'erreur TikTok signalant une saturation côté fournisseur.
+RATE_LIMIT_ERROR_CODES = frozenset({"rate_limit_exceeded"})
 
 
 class TikTokPublisher(SocialPublisher):
@@ -144,15 +148,30 @@ class TikTokPublisher(SocialPublisher):
         except (requests.RequestException, ValueError) as exc:
             raise SocialPublisherError(SocialErrorCode.NETWORK, "TikTok est inaccessible.", retryable=True) from exc
         error = payload.get("error") or {}
-        if isinstance(error, str):
+        error_code = error if isinstance(error, str) else error.get("code")
+        if response.status_code < 400 and error_code in {None, "", "ok"}:
+            return payload
+        if error_code in TOKEN_ERROR_CODES:
             raise SocialPublisherError(
                 SocialErrorCode.AUTHORIZATION,
                 "TikTok a refusé l'authentification.",
             )
-        if response.status_code >= 400 or error.get("code") not in {None, "ok"}:
-            code = SocialErrorCode.AUTHORIZATION if response.status_code in {401, 403} else SocialErrorCode.TEMPORARY
-            raise SocialPublisherError(code, "TikTok a refusé l'opération.", retryable=response.status_code >= 429)
-        return payload
+        if error_code in RATE_LIMIT_ERROR_CODES or response.status_code == 429:
+            raise SocialPublisherError(
+                SocialErrorCode.TEMPORARY,
+                "TikTok est momentanément saturé.",
+                retryable=True,
+            )
+        if isinstance(error, str) or response.status_code in {401, 403}:
+            raise SocialPublisherError(
+                SocialErrorCode.AUTHORIZATION,
+                "TikTok a refusé l'authentification.",
+            )
+        raise SocialPublisherError(
+            SocialErrorCode.TEMPORARY,
+            "TikTok a refusé l'opération.",
+            retryable=response.status_code >= 429,
+        )
 
 
 def _mime(path: Path) -> str:
