@@ -415,8 +415,7 @@ documentés dans [docs/ci-cd.md](docs/ci-cd.md).
 
 ## Licence et responsabilité
 
-Aucune licence n'est encore fournie dans le dépôt. Ajoute un fichier `LICENSE`
-avant de présenter officiellement le projet comme réutilisable en open source.
+Le dépôt est distribué sous licence [MIT](LICENSE), au nom de KGS-L.
 
 Tu dois disposer des droits nécessaires sur les vidéos traitées et respecter les
 conditions d'utilisation de chaque plateforme source et destination.

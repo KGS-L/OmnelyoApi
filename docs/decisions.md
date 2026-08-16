@@ -36,31 +36,61 @@ de `db/`, `scheduler/`, `billing/`, de l'amorçage SQLite dans `main.py`, de la
 variable `DATABASE_PATH` (`config.py`, Compose, `.env.example`, Dockerfile) et
 des tests dédiés au legacy. PostgreSQL est l'unique persistance métier.
 
-**Reste à faire (VPS)** : vérifier le volume `runtime/` du VPS au prochain
-déploiement — le retrait du code ne supprime aucun fichier de données. Si des
-données SQLite de staging méritent d'être conservées, les archiver avant de
-nettoyer le volume. Le rollback applicatif du workflow GitHub Actions restaure
-l'image précédente si le nouveau bot se comportait anormalement.
+**Reste à faire (VPS)** : deux volumes concernés, `backend_bot_db` et
+`omnelyo-backend_bot_db` (anciens noms de projet Compose). Après le déploiement
+du retrait SQLite :
 
-## 3. Facturation complète mais désactivée
+    docker run --rm -v backend_bot_db:/data alpine ls -laR /data
+    docker run --rm -v omnelyo-backend_bot_db:/data alpine ls -laR /data
+    docker volume rm api_bot_db
+
+Le dernier (`api_bot_db`) est vide : créé par mégarde le 16 août par un
+`docker run -v api_bot_db:...` sur un nom inexistant — Docker crée toujours le
+volume demandé s'il manque. Après inspection, archiver si nécessaire puis
+supprimer les deux volumes réels pour récupérer l'espace. Le rollback applicatif
+du workflow GitHub Actions restaure l'image précédente si le nouveau bot se
+comportait anormalement.
+
+## 3. Facturation — décisions enregistrées le 16 août 2026, activation en attente des prix
 
 Toute la chaîne technique existe (plans, ledger append-only, réservation de
 crédits, checkout Dodo/MoneyFusion, webhooks vérifiés, fulfilment idempotent)
-mais `BILLING_ENABLED=false` tant que la grille commerciale n'est pas validée.
+mais `BILLING_ENABLED=false` tant que la grille tarifaire n'est pas saisie.
 
-**Risque** : dérive entre le modèle technique et les décisions business
-(unité de crédit, remboursements, quotas).
-**Action de déclenchement** : atelier business model (voir
-[implementation-backend.md](implementation-backend.md)) ; les documents privés
-`BUSINESS_MODEL.md` et `PARTNER_PROGRAM.md` vivent hors du dépôt, dans le
-dossier parent de la plateforme.
+**Décidé (16 août 2026)** :
 
-## 4. Licence absente
+- **Unité de crédit** : 1 crédit = 1 vidéo rendue — correspond à
+  l'implémentation actuelle (réservation au `RENDER`, capture au succès,
+  libération à l'échec).
+- **Facturation des minutes** : oui, en plus des crédits. Le metering des
+  minutes source, destinations et octets existe déjà (`UsageEvent`) ; la
+  tarification reste à définir.
+- **Publications auto-générées par IA** : facturation prévue plus tard, à
+  concevoir quand la fonctionnalité existera.
+- **Remboursements** : via le portail Dodo
+  (`POST /v1/workspaces/{id}/billing/portal`), aucun développement spécifique.
+- **Programme partenaires : activé** en décision. Paramètres (hypothèses à
+  confirmer au contrat, cf. `PARTNER_PROGRAM.md` privé) : remise client de
+  10 % sur Creator/Pro, commission partenaire de 20 % du revenu net, paiements
+  après un délai de sécurité de 30 jours. État du code : service, modèles et
+  application des codes promo existent (`api/partner_service.py`), mais
+  **aucune route partenaire n'est exposée** (inscription, tableau de bord,
+  attribution, paiements) — chantier à spécifier avec BMAD.
+- **Rétention R2 (proposition en attente de validation)** : 90 jours pour le
+  plan FREE, illimitée pendant l'abonnement actif, purge 30 jours après
+  résiliation, suppression immédiate à la demande. Les clés de stockage étant
+  déjà isolées par workspace, des règles de cycle de vie R2 par préfixe
+  peuvent automatiser la purge sans code applicatif.
 
-Aucun fichier `LICENSE` : le dépôt n'est pas légalement réutilisable en l'état.
+**Reste à décider** : les prix des plans (seul point bloquant pour passer
+`BILLING_ENABLED=true`), la tarification des minutes, la confirmation définitive
+des taux partenaires. Les documents privés `BUSINESS_MODEL.md` et
+`PARTNER_PROGRAM.md` vivent hors du dépôt, dans le dossier parent.
 
-**Action de déclenchement** : choix du titulaire et de la licence (MIT/Apache-2.0
-pour une ouverture maximale) avant toute présentation publique comme open source.
+## 4. Licence — AJOUTÉE (16 août 2026)
+
+MIT, au nom de KGS-L : fichier `LICENSE` à la racine, section Licence du README
+alignée.
 
 ## 5. Dettes opérationnelles connues
 
