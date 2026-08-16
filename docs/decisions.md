@@ -7,44 +7,40 @@ soit parce qu'ils dépendent d'une décision externe (business, infrastructure,
 renommage public), soit parce que leur traitement exige une migration validée.
 Chaque entrée décrit l'état actuel, le risque et l'action de déclenchement.
 
-## 1. Double nommage ShortPilot / Omnelyo
+## 1. Double nommage ShortPilot / Omnelyo — DÉCIDÉ (16 août 2026)
 
-Le renommage produit vers **Omnelyo** est entamé mais inachevé. Cartographie
-actuelle :
+**Décision** : `shortpilot` reste le nom interne (code, variables
+d'environnement, base et utilisateur de test CI, utilisateur du conteneur) ;
+`omnelyo` est réservé aux artefacts publics (domaines, image conteneur, chemins
+VPS, expériences utilisateur). Le dépôt GitHub conserve son nom
+`KGS-L/shortpilot-platform-api` : le renommage n'apporterait qu'une redirection
+cosmétique en cassant les clones existants.
+
+Cartographie de référence :
 
 | Élément | Valeur | Portée |
 |---|---|---|
-| Dépôt GitHub | `KGS-L/shortpilot-platform-api` | renommage à décider côté GitHub |
+| Dépôt GitHub | `KGS-L/shortpilot-platform-api` | conservé (décision ci-dessus) |
 | Image conteneur | `omnelyo-backend` | `docker-compose.yml`, workflows |
 | Chemins VPS | `/home/admin/projects/omnelyo/backend` | `docs/ci-cd.md`, scripts |
 | Domaines publics | `omnelyo.kgslab.com`, `api-omnelyo.kgslab.com`, `bot-omnelyo.kgslab.com` | DNS et Nginx |
 | Base/ utilisateur PostgreSQL | `omnelyo` | `.env` VPS |
-| Code et variables | `shortpilot_*` (bot, base de test CI, `SHORTPILOT` dans les settings) | code source |
+| Code et variables | `shortpilot_*` (bot, base de test CI, utilisateur conteneur) | code source |
 
-**Risque** : confusion lors des recherches dans le code et les issues ;
-documentation qui doit expliquer les deux noms.
-**Action de déclenchement** : décider du nom définitif, renommer le dépôt GitHub
-(redirection automatique), puis aligner le code en une seule passe.
-**Décision minimale recommandée** : conserver `shortpilot` en interne (code,
-variables) et réserver `omnelyo` aux artefacts publics (domaines, image, VPS),
-puis l'écrire noir sur blanc ici.
+## 2. Stack SQLite historique — RETIRÉE (16 août 2026)
 
-## 2. Stack SQLite historique encore amorcée au démarrage du bot
+**Exécuté** : audit des imports (seuls `main.py` et `tests/test_core.py`
+dépendaient du legacy, aucun module actif de `api/`, `bot/`, `core/` ni
+`workers/`), `runtime/db` local vide (aucune donnée à migrer), puis suppression
+de `db/`, `scheduler/`, `billing/`, de l'amorçage SQLite dans `main.py`, de la
+variable `DATABASE_PATH` (`config.py`, Compose, `.env.example`, Dockerfile) et
+des tests dédiés au legacy. PostgreSQL est l'unique persistance métier.
 
-`main.py` (point d'entrée du bot, service `shortpilot-bot` du Compose) appelle
-encore `db.database.init_db` et démarre `scheduler.job_queue` + `scheduler.watchdog`
-de l'ancien pipeline SQLite. Les handlers du bot (`bot/handlers.py`) écrivent
-déjà dans PostgreSQL via `api.database`. L'ancienne file SQLite tourne donc à vide
-à côté du worker PostgreSQL.
-
-**Risque** : double exécution si un handler historique est réactivé ;
-maintenance de deux modèles de données.
-**Action de déclenchement** : auditer `runtime/db` (données historiques
-éventuelles), migrer ou archiver, puis retirer l'amorçage SQLite de `main.py`
-et supprimer `db/`, `scheduler/` et `billing/` (couche SQLite) dans le même
-changemement. Voir la case dédiée dans
-[implementation-backend.md](implementation-backend.md).
-**En attendant** : ne pas ajouter de nouvelle dépendance à `db/` ni `scheduler/`.
+**Reste à faire (VPS)** : vérifier le volume `runtime/` du VPS au prochain
+déploiement — le retrait du code ne supprime aucun fichier de données. Si des
+données SQLite de staging méritent d'être conservées, les archiver avant de
+nettoyer le volume. Le rollback applicatif du workflow GitHub Actions restaure
+l'image précédente si le nouveau bot se comportait anormalement.
 
 ## 3. Facturation complète mais désactivée
 

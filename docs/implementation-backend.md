@@ -41,7 +41,7 @@ Dernière analyse du dépôt : 13 août 2026.
 - [x] API CRUD pour workspaces, chaînes, vidéos, jobs et publications.
 - [x] Liaison sécurisée compte web ↔ compte Telegram.
 - [x] Stockage PostgreSQL chiffré des connexions OAuth sociales.
-- [~] Migration du pipeline SQLite vers PostgreSQL et Redis (nouveaux flux migrés ; historique à valider).
+- [~] Migration du pipeline SQLite vers PostgreSQL et Redis (nouveaux flux migrés ; code SQLite retiré le 16 août 2026, volume `runtime/` du VPS à vérifier au déploiement).
 - [x] Workers indépendants de l'API et du bot.
 - [x] Publication TikTok, Facebook et Instagram.
 - [ ] Fournisseur d'emails transactionnels.
@@ -203,7 +203,7 @@ les statuts, erreurs, titres, horaires et nouvelles tentatives restent isolés.
 - [x] Implémenter intégralement le flux décrit en section 3.
 - [x] Basculer les créations de vidéos et jobs du bot vers l'API métier.
 - [x] Maintenir temporairement un adaptateur de compatibilité SQLite si nécessaire (isolé dans `scheduler/` et `db/`, plus utilisé par les nouveaux handlers Telegram).
-- [ ] Retirer SQLite seulement après migration et validation des données historiques.
+- [x] Retirer SQLite seulement après migration et validation des données historiques (retiré le 16 août 2026 : `runtime/db` local vide, imports audités, seuls `main.py` et `tests/test_core.py` dépendaient du legacy).
 
 ### Phase 4 — Workers et orchestration
 

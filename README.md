@@ -48,8 +48,7 @@ programmation et de publication de vidéos courtes. Le dépôt réunit actuellem
 - credentials OAuth sociaux chiffrés en base ;
 - logs JSON corrélés, rate limiting Redis et journal d'audit PostgreSQL ;
 - migrations PostgreSQL avec Alembic ;
-- `BillingService` indépendant du prestataire de paiement ;
-- prototype historique de paiement manuel Mobile Money, non activé dans l'API ;
+- abstraction de facturation PostgreSQL indépendante du prestataire de paiement ;
 - environnements Docker distincts pour le développement et la production ;
 - CI GitHub Actions et déploiement VPS manuel.
 
@@ -80,22 +79,20 @@ Utilisateur Telegram ─┐                 ┌─ Frontend web
 **PostgreSQL est la source de vérité** des nouveaux flux : identités, workspaces,
 connexions sociales, vidéos, jobs, publications et audit. Redis conserve seulement
 les données temporaires et les signaux de réveil ; les workers continuent à poller
-PostgreSQL si Redis est indisponible. L'ancien code SQLite reste isolé dans `db/`
-et `scheduler/` uniquement pour migrer ou vérifier les données historiques.
+PostgreSQL si Redis est indisponible. L'ancienne stack SQLite (`db/`,
+`scheduler/`, `billing/`) a été retirée le 16 août 2026 : PostgreSQL est
+l'unique persistance métier.
 
 ## Structure du dépôt
 
 ```text
 shortpilot-platform-api/
-├── api/                         # API, auth, routes métier et intégrations sociales
-├── billing/                     # BillingService et adaptateurs de paiement
+├── api/                         # API, auth, routes métier, intégrations sociales et facturation
 ├── bot/                         # bot Telegram et callback OAuth YouTube
 ├── core/                        # pipeline vidéo, LLM, TTS, R2 et YouTube
-├── db/                          # base SQLite historique du bot
 ├── deploy/nginx/                # templates Nginx et en-têtes de sécurité
 ├── docs/                        # documentation complémentaire et décisions
 ├── migrations/                  # migrations Alembic PostgreSQL
-├── scheduler/                   # pipeline SQLite historique, isolé
 ├── scripts/                     # bootstrap VPS, configuration Nginx, DNS
 ├── workers/                     # handlers INGEST/PROCESS/RENDER/PUBLISH
 ├── tests/                       # tests unitaires et intégration PostgreSQL
@@ -105,7 +102,7 @@ shortpilot-platform-api/
 ├── docker-compose.prod.yml      # durcissement de production
 ├── Dockerfile
 ├── main.py                      # point d'entrée du bot
-└── config.py                    # configuration du pipeline historique
+└── config.py                    # configuration du pipeline et du bot
 ```
 
 ## Prérequis
@@ -337,7 +334,7 @@ Exécuter la suite de CI localement :
 pip install -r requirements-ci.txt
 python -m coverage run -m unittest discover -s tests
 python -m coverage report
-python -m compileall -q api billing bot core db scheduler workers tests migrations
+python -m compileall -q api bot core workers tests migrations
 ```
 
 Appliquer les migrations PostgreSQL :
@@ -405,7 +402,7 @@ documentés dans [docs/ci-cd.md](docs/ci-cd.md).
 - [ ] atelier business model, quotas et règles de crédits ;
 - [x] plans techniques, quotas sociaux/jobs/volume et ledger de crédits PostgreSQL ;
 - [x] endpoints de paiement Dodo/MoneyFusion et webhooks idempotents ;
-- [ ] migration et validation des données SQLite historiques ;
+- [ ] vérification du volume `runtime/` du VPS (données SQLite historiques éventuelles) ;
 - [ ] métriques, alertes, rétention et sauvegardes testées ;
 - [ ] frontend SaaS.
 

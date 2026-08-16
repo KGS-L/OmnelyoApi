@@ -54,7 +54,7 @@ jobs:
       - name: Coverage report
         run: python -m coverage report
       - name: Python syntax
-        run: python -m compileall -q api billing bot core db scheduler tests
+        run: python -m compileall -q api bot core workers tests
       - name: PostgreSQL migrations
         run: alembic upgrade head
       - name: PostgreSQL integration suite

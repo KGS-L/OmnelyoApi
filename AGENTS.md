@@ -13,8 +13,7 @@ Redis 7, Alembic. Le frontend vit dans un dépôt séparé.
 | `bot/` | Bot Telegram et serveur OAuth Flask |
 | `core/` | Pipeline vidéo : yt-dlp, scènes, découpage, LLM, TTS, overlay, FFmpeg, R2 |
 | `migrations/` | Alembic PostgreSQL |
-| `db/`, `scheduler/`, `billing/` | Legacy SQLite — ne pas y ajouter de dépendance, voir `docs/decisions.md` |
-| `docs/` | Documentation complémentaire et décisions en attente |
+| `docs/` | Documentation complémentaire et décisions |
 
 Deux points d'entrée : `api/main.py` (FastAPI, `/v1`) et `main.py` racine (bot).
 
@@ -48,8 +47,9 @@ ruff check .                     # config dans pyproject.toml
 - Ne jamais committer `.env`, `credentials/` ou des secrets ; les URLs R2 restent
   signées ; les prix viennent de `provider_price_mappings`, jamais du client.
 - Toute modification de schéma passe par une migration Alembic dédiée.
-- Ne pas étendre le legacy SQLite (`db/`, `scheduler/`, `billing/`) ;
-  sa suppression est planifiée dans `docs/decisions.md`.
+- PostgreSQL est l'unique persistance métier : la stack SQLite historique
+  (`db/`, `scheduler/`, `billing/`) a été retirée le 16 août 2026, ne pas la
+  réintroduire.
 - Tests en style `unittest` ; les fichiers de test portent le préfixe `test_`,
   sauf `tests/integration_workspace_postgres.py` qui est invoquée explicitement
   par nom de module.

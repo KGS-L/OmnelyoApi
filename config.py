@@ -12,7 +12,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent
 
 # Créer les répertoires de base au chargement
-for _dir in [BASE_DIR / "credentials", BASE_DIR / "db", BASE_DIR / "storage" / "tmp", 
+for _dir in [BASE_DIR / "credentials", BASE_DIR / "storage" / "tmp",
              BASE_DIR / "storage" / "processed", BASE_DIR / "logs"]:
     _dir.mkdir(parents=True, exist_ok=True)
 
@@ -93,18 +93,6 @@ MANUAL_SCHEDULE_MIN_LEAD_MINUTES = int(
 JOB_WORKER_CONCURRENCY = max(1, int(os.getenv("JOB_WORKER_CONCURRENCY", 1)))
 JOB_POLL_INTERVAL_SEC = max(0.5, float(os.getenv("JOB_POLL_INTERVAL_SEC", 2)))
 JOB_MAX_ATTEMPTS = max(1, int(os.getenv("JOB_MAX_ATTEMPTS", 2)))
-
-# --- Facturation (mode manuel pour le MVP) ---
-MANUAL_PAYMENT_INSTRUCTIONS = os.getenv(
-    "MANUAL_PAYMENT_INSTRUCTIONS",
-    "Effectue le paiement par Orange Money ou Moov Money, puis transmets la référence au support.",
-)
-
-# --- DB ---
-_db_env = os.getenv("DATABASE_PATH", "db/shortpilot.sqlite3")
-_db_path = Path(_db_env)
-DATABASE_PATH = _db_path if _db_path.is_absolute() else BASE_DIR / _db_path
-DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # --- Storage locale ---
 TMP_DIR = BASE_DIR / "storage" / "tmp"

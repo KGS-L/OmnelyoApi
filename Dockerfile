@@ -20,8 +20,8 @@ RUN groupadd --system --gid 10001 shortpilot \
     && useradd --system --uid 10001 --gid shortpilot --home-dir /app shortpilot
 
 COPY --chown=shortpilot:shortpilot . .
-RUN mkdir -p /app/storage/tmp /app/logs /app/db /app/runtime/db \
-    && chown -R shortpilot:shortpilot /app/storage /app/logs /app/db /app/runtime
+RUN mkdir -p /app/storage/tmp /app/logs \
+    && chown -R shortpilot:shortpilot /app/storage /app/logs
 
 USER shortpilot
 EXPOSE 8000 8420
