@@ -23,6 +23,10 @@ x-app: &app
   environment:
     API_DATABASE_URL: ${API_DATABASE_URL:-postgresql+psycopg://shortpilot:shortpilot-local-dev@postgres:5432/shortpilot}
     REDIS_URL: ${REDIS_URL:-redis://:redis-local-dev@redis:6379/0}
+  volumes:
+    # Secrets OAuth (client_secret.json YouTube, etc.) lus par l'API (connexion)
+    # et le worker (publication/refresh). Monté en lecture seule.
+    - ./credentials:/app/credentials:ro
   depends_on:
     postgres: {condition: service_healthy}
     redis: {condition: service_healthy}
