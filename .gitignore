@@ -44,6 +44,9 @@ tmp/
 logs/
 *.pid
 
+# Sorties générées par BMAD (les artefacts durables vivent dans docs/)
+_bmad-output/
+
 # IDE et système d'exploitation
 .idea/
 .vscode/
