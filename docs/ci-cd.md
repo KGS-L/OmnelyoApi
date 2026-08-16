@@ -76,10 +76,44 @@ TIKTOK_SANDBOX_MODE=true
 Ajouter ensuite Telegram, OAuth, R2 et IA. Encoder les caractères spéciaux des
 mots de passe dans les URL PostgreSQL et Redis.
 
+### Secrets OAuth YouTube sur le VPS (`client_secret.json`)
+
+Le fichier `credentials/client_secret.json` (client OAuth Google de type
+« Application Web ») est lu par les services `api` (connexion + échange du
+code) et `worker` (publication + refresh) via le montage `./credentials:ro`
+de `docker-compose.yml`. Il ne passe jamais par git (`credentials/` est
+ignoré) ni par le déploiement (seuls les manifests compose/nginx/scripts
+sont installés sur le VPS) : il vit uniquement sur le VPS, à côté du `.env`.
+
+```bash
+# 1. Si Docker a créé le dossier en root lors d'un premier démarrage sans fichier :
+sudo chown -R admin:admin ~/projects/omnelyo/backend/credentials
+
+# 2. Transfert depuis le poste local (scp, saisir le mot de passe admin) :
+scp credentials/client_secret.json admin@<VPS>:~/projects/omnelyo/backend/credentials/
+
+# 3. Permissions : le conteneur tourne sous l'uid 10001 (shortpilot) — le dossier
+#    et le fichier doivent rester lisibles par cet utilisateur. PAS de chmod 700.
+chmod 755 ~/projects/omnelyo/backend/credentials
+chmod 644 ~/projects/omnelyo/backend/credentials/client_secret.json
+
+# 4. Redémarrer les services qui lisent le fichier :
+cd ~/projects/omnelyo/backend
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api worker
+```
+
+L'URI de redirection à enregistrer dans Google Cloud Console (Credentials →
+client OAuth → *Authorized redirect URIs*) est
+`{SOCIAL_OAUTH_CALLBACK_BASE_URL}/youtube/callback`, soit en production :
+`https://api-omnelyo.kgslab.com/v1/integrations/social/youtube/callback`
+et en local : `http://localhost:8000/v1/integrations/social/youtube/callback`.
+
 ## Déploiement et rollback
 
 Un push sur `main` lance : tests, build GHCR, migrations, recréation des services
-et contrôle de `https://api-omnelyo.kgslab.com/health`.
+et contrôle de `https://api-omnelyo.kgslab.com/health`. Un push ne modifiant que
+des fichiers Markdown (`paths-ignore: ['**.md']` dans `ci.yml`) ne déclenche ni
+CI ni déploiement — le déploiement suit le workflow CI via `workflow_run`.
 
 Si ce contrôle échoue, le workflow remet automatiquement l'image applicative
 précédente. Il ne rétrograde jamais automatiquement la base de données.
