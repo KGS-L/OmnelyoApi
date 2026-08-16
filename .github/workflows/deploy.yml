@@ -97,6 +97,29 @@ jobs:
             install -m 640 deploy/nginx/* "$VPS_BACKEND_PATH/deploy/nginx/"
           fi
 
+      # Le runner étant self-hosted sur le VPS, écrire le fichier suffit.
+      # Contenu du client_secret.json stocké dans le secret GitHub
+      # YOUTUBE_CLIENT_SECRET_JSON (multiligne). Sans secret, le fichier
+      # éventuellement installé manuellement est conservé tel quel.
+      # Permissions imposées : dossier 755, fichier 644 — les conteneurs
+      # tournent sous l'uid 10001 (shortpilot), un dossier 0700 les bloquerait.
+      - name: Install OAuth client secrets when configured
+        env:
+          VPS_BACKEND_PATH: ${{ secrets.VPS_BACKEND_PATH }}
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$VPS_BACKEND_PATH"
+          install -d -m 755 "$VPS_BACKEND_PATH/credentials"
+          chmod 755 "$VPS_BACKEND_PATH/credentials"
+          if [ -n "$YOUTUBE_CLIENT_SECRET_JSON" ]; then
+            printf '%s' "$YOUTUBE_CLIENT_SECRET_JSON" > "$VPS_BACKEND_PATH/credentials/client_secret.json"
+            chmod 644 "$VPS_BACKEND_PATH/credentials/client_secret.json"
+            echo "YouTube OAuth client secrets installed."
+          else
+            echo "YOUTUBE_CLIENT_SECRET_JSON absent : fichier credentials existant conservé."
+          fi
+
       - name: Deploy immutable image and verify health
         env:
           VPS_BACKEND_PATH: ${{ secrets.VPS_BACKEND_PATH }}

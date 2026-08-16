@@ -36,7 +36,14 @@ class YouTubePublisher(SocialPublisher):
                 SocialErrorCode.AUTHORIZATION,
                 "Le connecteur OAuth YouTube n'est pas installé.",
             ) from exc
-        if not self.client_secrets_file.is_file():
+        try:
+            secrets_present = self.client_secrets_file.is_file()
+        except OSError as exc:
+            raise SocialPublisherError(
+                SocialErrorCode.AUTHORIZATION,
+                "Les credentials OAuth YouTube ne sont pas lisibles (permissions).",
+            ) from exc
+        if not secrets_present:
             raise SocialPublisherError(
                 SocialErrorCode.AUTHORIZATION,
                 "Les credentials OAuth YouTube ne sont pas configurés.",
