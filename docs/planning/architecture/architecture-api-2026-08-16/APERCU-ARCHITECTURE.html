@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShortPilot / Omnelyo — Architecture du backend</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#171e2e; --panel2:#1d2740; --line:#2a3654;
+    --txt:#e8ecf5; --mut:#9aa7c0; --acc:#5b9dff; --acc2:#37d0a4; --warn:#ffb454; --bad:#ff7a90;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.6 -apple-system,"Segoe UI",Roboto,Inter,sans-serif}
+  .wrap{max-width:1060px;margin:0 auto;padding:48px 24px 96px}
+  header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:40px}
+  h1{font-size:34px;margin:0 0 6px;letter-spacing:-.5px}
+  .sub{color:var(--mut);font-size:15px}
+  .badge{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:99px;padding:2px 12px;font-size:13px;color:var(--acc2);margin-right:8px;margin-top:14px}
+  h2{font-size:22px;margin:56px 0 16px;letter-spacing:-.3px;border-left:4px solid var(--acc);padding-left:12px}
+  h3{font-size:16px;margin:0 0 8px}
+  p{margin:8px 0}
+  .lead{font-size:18px;color:var(--txt);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .lead b{color:var(--acc)}
+  .grid{display:grid;gap:14px}
+  .g4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .card .id{font-family:var(--mono);font-size:12px;color:var(--acc);letter-spacing:.5px}
+  .card p{margin:6px 0 0;color:var(--mut);font-size:14px}
+  /* diagramme topologie */
+  .topo{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:10px}
+  .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .node{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 16px;text-align:center;min-width:150px}
+  .node b{display:block;font-size:14px}
+  .node span{font-size:12px;color:var(--mut);font-family:var(--mono)}
+  .node.ext{border-color:#3a4a74;background:#141b2c}
+  .node.db{border-color:#2e6d5a}
+  .node.dead{border-color:#5a4a2e;opacity:.85}
+  .arrow{color:var(--mut);text-align:center;font-size:13px}
+  .tag{font-size:11px;font-family:var(--mono);color:var(--warn)}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:14px}
+  th,td{padding:10px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.6px}
+  tr:last-child td{border-bottom:none}
+  td.k{white-space:nowrap;color:var(--acc);font-weight:600}
+  ul.debt{list-style:none;padding:0;margin:0}
+  ul.debt li{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:10px;padding:12px 16px;margin-bottom:10px;font-size:14px}
+  ul.debt li b{color:var(--warn)}
+  .next{background:linear-gradient(135deg,#16203a,#122a24);border:1px solid var(--line);border-radius:12px;padding:20px 22px}
+  .next code{background:#0c111d;border:1px solid var(--line);border-radius:6px;padding:1px 8px;font-family:var(--mono);font-size:13px;color:var(--acc2)}
+  footer{margin-top:64px;color:var(--mut);font-size:13px;border-top:1px solid var(--line);padding-top:20px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>ShortPilot <span style="color:var(--mut)">/</span> Omnelyo — architecture du backend</h1>
+  <div class="sub">Spine d'architecture ratifié le 16 août 2026 · monolithe modulaire multi-processus · document de walkthrough en français</div>
+  <span class="badge">statut : final</span><span class="badge">10 invariants (AD-1 → AD-10)</span><span class="badge">source : ratification brownfield</span>
+</header>
+
+<section>
+  <h2>Le paradigme en une phrase</h2>
+  <div class="lead">
+    <b>Un monolithe modulaire livré en une seule image conteneur exécutant quatre processus</b> (api, worker, bot, migrate)
+    — <b>PostgreSQL est l'unique source de vérité</b>, Redis n'est qu'un accélérateur transitoire,
+    et tout travail long passe par une <b>file de jobs durable détenue par la base</b> (bails, heartbeats, reprise).
+  </div>
+</section>
+
+<section>
+  <h2>Topologie de déploiement</h2>
+  <div class="topo">
+    <div class="row">
+      <div class="node ext"><b>Frontend web</b><span>dépôt séparé</span></div>
+      <div class="node ext"><b>Utilisateur Telegram</b><span>API Telegram</span></div>
+    </div>
+    <div class="arrow">▼ &nbsp;Nginx + Certbot terminent le HTTPS (80/443)</div>
+    <div class="row">
+      <div class="node"><b>api</b><span>uvicorn :8000</span></div>
+      <div class="node dead"><b>shortpilot-bot</b><span>python main.py :8420 <div class="tag">legacy OAuth — retrait AD-8</div></span></div>
+    </div>
+    <div class="row">
+      <div class="node"><b>worker</b><span>python -m workers.main<div class="tag">scale-out conditionné (voir dette)</div></span></div>
+      <div class="node"><b>migrate</b><span>alembic upgrade head (one-shot)</span></div>
+    </div>
+    <div class="row">
+      <div class="node db"><b>PostgreSQL 16</b><span>source de vérité</span></div>
+      <div class="node db"><b>Redis 7</b><span>transitoire TTL</span></div>
+    </div>
+    <div class="arrow">▼ &nbsp;le worker pousse et lit</div>
+    <div class="row">
+      <div class="node ext"><b>Cloudflare R2</b><span>buckets privés · URLs signées</span></div>
+      <div class="node ext"><b>YouTube · TikTok · Facebook · Instagram</b><span>adaptateurs SocialPublisher</span></div>
+    </div>
+  </div>
+  <p style="color:var(--mut);font-size:14px">Pipeline vidéo : <span style="font-family:var(--mono);color:var(--acc)">INGEST → PROCESS → RENDER → PUBLISH</span> — chaque étape est un job PostgreSQL, enchaînée par le client (l'API est l'orchestrateur).</p>
+</section>
+
+<section>
+  <h2>Les dix invariants</h2>
+  <div class="grid g2">
+    <div class="card"><div class="id">AD-1</div><h3>PostgreSQL, unique source de vérité</h3><p>Tout état métier en base via Alembic ; Redis ne stocke que du transitoire TTL ; aucune seconde persistance.</p></div>
+    <div class="card"><div class="id">AD-2</div><h3>Redis : requis pour l'auth, best-effort ailleurs</h3><p>OTP / OAuth / liaison Telegram le requièrent ; rate-limit fail-open, wakeup dégradé en polling. Toute nouvelle clé Redis déclare son mode de dégradation.</p></div>
+    <div class="card"><div class="id">AD-3</div><h3>Isolation multi-tenant par filtre explicite</h3><p>Accès via dépendance de membership ; chaque requête répète <span style="font-family:var(--mono)">workspace_id ==</span> ; workspace étranger ⇒ 404 ; clés R2 revérifiées.</p></div>
+    <div class="card"><div class="id">AD-4</div><h3>File durable : un seul point de passage</h3><p>Claiming exclusif par <span style="font-family:var(--mono)">claim_next_job</span> (FOR UPDATE SKIP LOCKED) ; toutes les transitions de statut passent par <span style="font-family:var(--mono)">workers/job_state.py</span> sous verrou de ligne.</p></div>
+    <div class="card"><div class="id">AD-5</div><h3>Dead-letter terminal</h3><p>Après épuisement des tentatives, FAILED est permanent ; annulation uniquement depuis QUEUED ; récupération = nouveau job.</p></div>
+    <div class="card"><div class="id">AD-6</div><h3>Enchaînement piloté par le client</h3><p>Aucun handler n'enfile l'étape suivante ; au plus un job actif par (vidéo, étape) et par publication — pas de doublon, pas de double débit de crédit.</p></div>
+    <div class="card"><div class="id">AD-7</div><h3>Argent : prix serveur, ledger append-only</h3><p>Prix uniquement de <span style="font-family:var(--mono)">provider_price_mappings</span> ; cycle reserve/capture/release ; idempotence par contrainte unique ; entitlements à rédacteur unique ; webhooks vérifiés avant fulfilment.</p></div>
+    <div class="card"><div class="id">AD-8</div><h3>Un seul chemin de connexion sociale</h3><p>Contrat SocialPublisher + registre ; tokens uniquement dans SocialConnection chiffrés Fernet ; l'ancien OAuth du bot (Flask :8420, tokens fichier) est voué à disparaître.</p></div>
+    <div class="card"><div class="id">AD-9</div><h3>Configuration unique</h3><p><span style="font-family:var(--mono)">api/config.py</span> (pydantic-settings, validateurs prod) est l'unique source ; le <span style="font-family:var(--mono)">config.py</span> racine est gelé — sa retraite est un chantier prioritaire (crash latent en prod read-only).</p></div>
+    <div class="card"><div class="id">AD-10</div><h3>Langue utilisateur : français</h3><p>Toute chaîne visible de l'utilisateur est en français — API, bot, copy. (Docs FR, commits EN conventionnels.)</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Conventions clés</h2>
+  <table>
+    <tr><th>Concern</th><th>Convention</th></tr>
+    <tr><td class="k">Nommage</td><td><b>shortpilot</b> interne (code, env, CI) · <b>omnelyo</b> public (domaines, image, VPS) · routes <span style="font-family:var(--mono)">/v1/workspaces/{id}/…</span></td></tr>
+    <tr><td class="k">Données</td><td>PK UUID v4 · enums minuscules · horodateurs serveur · invariants par contraintes SQL · X-Request-ID propagé</td></tr>
+    <tr><td class="k">État</td><td>Services sans état (flush, jamais commit) · concurrence = verrous de lignes + contraintes uniques · logs JSON · mutations /v1 auditées</td></tr>
+    <tr><td class="k">Erreurs</td><td>404 absent/étranger · 409 conflit · 422 validation · 429 quota · 402 crédits · 503 fonctionnalité non configurée</td></tr>
+    <tr><td class="k">Stockage</td><td>Clés <span style="font-family:var(--mono)">workspaces/{ws}/videos|jobs|media-assets/…</span> · buckets privés · URLs présignées uniquement</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>Dette assumée & chantiers à venir</h2>
+  <ul class="debt">
+    <li><b>Unification de la configuration (AD-9)</b> — retirer le config.py racine ; corrige au passage le crash latent des conteneurs read-only en production.</li>
+    <li><b>Retraite de l'OAuth legacy du bot (AD-8)</b> — serveur Flask :8420, core/youtube_auth.py, core/youtube_uploader.py, volumes bot.</li>
+    <li><b>Déduplication à l'enqueue</b> — garantir mécaniquement « un job actif par (vidéo, étape) » sur POST /jobs (l'invariant AD-6 est posé, l'implémentation reste à faire).</li>
+    <li><b>Propriétaire du dispatch programmé</b> — qui convertit scheduled_at en job PUBLISH ; à décider avant tout épique « calendrier ».</li>
+    <li><b>Fenêtre de double publication PUBLISH</b> — pas de clé d'idempotence fournisseur ; à fermer avant tout scale-out multi-worker.</li>
+    <li><b>Bloqué business</b> — activation de la facturation (prix), expiration des crédits, rétention R2, routes partenaires.</li>
+    <li><b>Ops</b> — métriques, alertes, sauvegardes testées ; montée Redis 8.x à planifier ; aligner Python CI/image.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Et ensuite ?</h2>
+  <div class="next">
+    <p>Le spine est le contrat de cohérence : toute nouvelle story ou tout nouvel épique doit s'y conformer (ou explicitement l'amender via <code>bmad-correct-course</code>).</p>
+    <p style="margin-top:10px">Ordre recommandé : corriger AD-9 et AD-8 via <code>bmad-build</code> → adopter le spine en compagnon d'une spéc <code>bmad-spec</code> → découper en épics et stories <code>bmad-create-epics-and-stories</code> → planifier le sprint <code>bmad-sprint-planning</code>.</p>
+  </div>
+</section>
+
+<footer>
+  Sources : AGENTS.md · README.md · docs/decisions.md · docs/implementation-backend.md · balayage du code du 16 août 2026.<br>
+  Documents de référence : <span style="font-family:var(--mono)">ARCHITECTURE-SPINE.md</span> (contrat) · <span style="font-family:var(--mono)">.memlog.md</span> (décisions & raisonnements) · <span style="font-family:var(--mono)">reviews/</span> (porte de revue).
+</footer>
+
+</div>
+</body>
+</html>
