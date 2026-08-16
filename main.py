@@ -3,7 +3,6 @@ Point d'entrée de ShortPilot.
 Initialise la DB, lance le bot Telegram, démarre le watchdog planifié.
 """
 import logging
-from pathlib import Path
 
 import config
 from db.database import init_db

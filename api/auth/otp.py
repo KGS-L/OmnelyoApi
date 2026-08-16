@@ -9,8 +9,7 @@ from typing import TYPE_CHECKING, Any
 import requests
 
 if TYPE_CHECKING:
-    from redis import Redis
-    from api.config import APISettings
+    pass
 
 logger = logging.getLogger(__name__)
 

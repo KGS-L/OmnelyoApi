@@ -2,7 +2,6 @@
 Orchestration du pipeline complet + calcul des créneaux de publication.
 """
 import logging
-import os
 import shutil
 import requests
 from datetime import datetime, timedelta
@@ -27,8 +26,7 @@ from core import (
     tts,
     overlay,
     storage_r2,
-    youtube_uploader,
-    youtube_auth
+    youtube_uploader
 )
 
 logger = logging.getLogger(__name__)
@@ -62,7 +60,6 @@ def get_remaining_slots(user_id: int | None = None) -> int:
     """
     Retourne le nombre de créneaux de publication restants pour aujourd'hui.
     """
-    today_str = datetime.now().strftime("%Y-%m-%d")
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -179,7 +176,7 @@ def process_source_video(source_video_id: int) -> None:
                 ("downloading", source_video_id)
             )
             conn.commit()
-    except Exception as e:
+    except Exception:
         logger.exception("Erreur DB à l'initialisation du pipeline")
         return
 
@@ -242,7 +239,7 @@ def process_source_video(source_video_id: int) -> None:
                 )
                 clip_id = cursor.lastrowid
                 conn.commit()
-        except Exception as e:
+        except Exception:
             logger.exception("Échec de la création du clip en DB")
             failed_clips += 1
             continue

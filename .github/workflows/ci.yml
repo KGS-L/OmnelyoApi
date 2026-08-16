@@ -46,11 +46,15 @@ jobs:
       - name: Install CI dependencies
         run: pip install -r requirements-ci.txt
       - name: Unit tests
-        run: python -B -m unittest discover -s tests -v
+        run: python -B -m coverage run -m unittest discover -s tests -v
+      - name: Coverage report
+        run: python -m coverage report
       - name: Python syntax
         run: python -m compileall -q api billing bot core db scheduler tests
       - name: PostgreSQL migrations
         run: alembic upgrade head
+      - name: PostgreSQL integration suite
+        run: python -B -m unittest tests.integration_workspace_postgres -v
       - name: Create non-secret Compose env file
         run: |
           printf '%s\n' \

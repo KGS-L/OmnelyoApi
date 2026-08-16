@@ -97,7 +97,14 @@ curl --fail https://api-omnelyo.kgslab.com/health
 Toute migration destructive exige une sauvegarde PostgreSQL testée et une
 stratégie de compatibilité avant le déploiement.
 
-## Configuration initiale de Nginx
+## Configuration initiale de Nginx & SSL
+
+> [!IMPORTANT]
+> Pour activer l'accès HTTPS aux sous-domaines API (`https://api-omnelyo.kgslab.com`) et Telegram Bot, exécutez **une seule fois avec sudo** la commande suivante sur le VPS :
+> ```bash
+> cd /home/admin/projects/omnelyo/backend
+> sudo bash scripts/configure-nginx.sh --email votre-email@example.com
+> ```
 
 Nginx est configuré une seule fois, séparément du workflow applicatif afin de
 ne pas modifier les autres sites du VPS. Le script est idempotent, sauvegarde

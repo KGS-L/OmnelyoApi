@@ -4,7 +4,6 @@ import mimetypes
 import shutil
 import socket
 import uuid
-from pathlib import Path
 from urllib.parse import urlparse
 
 from api.database import SessionLocal

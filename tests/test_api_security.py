@@ -1,7 +1,7 @@
 """Tests purs des primitives de sécurité ne nécessitant aucun service externe."""
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from api.auth.otp import EmailDeliveryError, EmailSender, OTPService
 
@@ -12,17 +12,21 @@ class FakePipeline:
         self.operations = []
 
     def setex(self, key, ttl, value):
-        self.operations.append(("setex", key, ttl, value)); return self
+        self.operations.append(("setex", key, ttl, value))
+        return self
 
     def delete(self, *keys):
-        self.operations.append(("delete", keys)); return self
+        self.operations.append(("delete", keys))
+        return self
 
     def execute(self):
         for operation in self.operations:
             if operation[0] == "setex":
-                _, key, _, value = operation; self.redis.values[key] = value
+                _, key, _, value = operation
+                self.redis.values[key] = value
             else:
-                for key in operation[1]: self.redis.values.pop(key, None)
+                for key in operation[1]:
+                    self.redis.values.pop(key, None)
 
 
 class FakeRedis:
@@ -33,14 +37,22 @@ class FakeRedis:
         self.values[key] = int(self.values.get(key, 0)) + 1
         return self.values[key]
 
-    def expire(self, key, ttl): return True
-    def setex(self, key, ttl, value): self.values[key] = value
+    def expire(self, key, ttl):
+        return True
+
+    def setex(self, key, ttl, value):
+        self.values[key] = value
+
     def get(self, key):
         value = self.values.get(key)
         return value.encode() if isinstance(value, str) else value
+
     def delete(self, *keys):
-        for key in keys: self.values.pop(key, None)
-    def pipeline(self): return FakePipeline(self)
+        for key in keys:
+            self.values.pop(key, None)
+
+    def pipeline(self):
+        return FakePipeline(self)
 
 
 class OTPTests(unittest.TestCase):

@@ -20,3 +20,4 @@ apiMoneyFusion>=0.1.4,<0.2
 # Test client dependency required by starlette.testclient
 httpx2>=0.3.0
 pytest>=8.3.0
+coverage>=7.6.0

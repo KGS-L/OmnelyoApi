@@ -74,7 +74,7 @@ Utilisateur Telegram ─┐                 ┌─ Frontend web
         Cloudflare R2    YouTube / TikTok /
                         Facebook / Instagram
 
-             Caddy termine HTTPS en production
+             Nginx et Certbot terminent HTTPS en production
 ```
 
 **PostgreSQL est la source de vérité** des nouveaux flux : identités, workspaces,
@@ -92,15 +92,17 @@ shortpilot-platform-api/
 ├── bot/                         # bot Telegram et callback OAuth YouTube
 ├── core/                        # pipeline vidéo, LLM, TTS, R2 et YouTube
 ├── db/                          # base SQLite historique du bot
+├── deploy/nginx/                # templates Nginx et en-têtes de sécurité
+├── docs/                        # documentation complémentaire et décisions
 ├── migrations/                  # migrations Alembic PostgreSQL
 ├── scheduler/                   # pipeline SQLite historique, isolé
+├── scripts/                     # bootstrap VPS, configuration Nginx, DNS
 ├── workers/                     # handlers INGEST/PROCESS/RENDER/PUBLISH
 ├── tests/                       # tests unitaires et intégration PostgreSQL
 ├── .github/workflows/           # CI et déploiement VPS
 ├── docker-compose.yml           # services communs
 ├── docker-compose.override.yml  # développement, chargé automatiquement
-├── docker-compose.prod.yml      # Caddy et configuration de production
-├── Caddyfile                    # HTTPS et reverse proxy
+├── docker-compose.prod.yml      # durcissement de production
 ├── Dockerfile
 ├── main.py                      # point d'entrée du bot
 └── config.py                    # configuration du pipeline historique
@@ -292,8 +294,6 @@ Les OTP peuvent être envoyés avec Resend (`EMAIL_PROVIDER=resend`). En local,
 `EMAIL_PROVIDER=log` n'effectue aucun appel externe et
 `EXPOSE_DEV_OTP=true` permet de renvoyer le code dans la réponse.
 
-Plus de détails dans [BACKEND_SAAS.md](BACKEND_SAAS.md).
-
 ## Facturation
 
 La couche PostgreSQL de paiement expose un checkout commun pour Dodo Payments et
@@ -323,10 +323,11 @@ mesurés côté serveur ; les échéances de rétention sont enregistrées sans 
 encore de suppression automatique. Les prix et l'attribution après paiement restent désactivés tant
 que la grille commerciale n'est pas validée.
 
-L'atelier décrit dans [IMPLEMENTATION_BACKEND.md](IMPLEMENTATION_BACKEND.md) doit
-d'abord fixer la cible, l'unité de crédit, les quotas, les remboursements et les
-moyens de paiement. Consulte ensuite [BILLING.md](BILLING.md) pour raccorder le
-prestataire retenu.
+L'atelier décrit dans
+[docs/implementation-backend.md](docs/implementation-backend.md) doit d'abord
+fixer la cible, l'unité de crédit, les quotas, les remboursements et les moyens
+de paiement. L'état des décisions en attente est consigné dans
+[docs/decisions.md](docs/decisions.md).
 
 ## Tests et migrations
 
@@ -334,7 +335,8 @@ Exécuter la suite de CI localement :
 
 ```bash
 pip install -r requirements-ci.txt
-python -m pytest -q
+python -m coverage run -m unittest discover -s tests
+python -m coverage report
 python -m compileall -q api billing bot core db scheduler workers tests migrations
 ```
 
@@ -344,8 +346,9 @@ Appliquer les migrations PostgreSQL :
 alembic upgrade head
 ```
 
-Le workflow CI exécute les tests, vérifie la syntaxe Python, applique Alembic sur
-un PostgreSQL éphémère et valide les fichiers Compose.
+Le workflow CI exécute les tests unitaires avec mesure de couverture, vérifie la
+syntaxe Python, applique Alembic puis la suite d'intégration PostgreSQL sur une
+base éphémère, et valide les fichiers Compose.
 
 La suite PostgreSQL peut aussi être exécutée contre une base déjà migrée :
 
@@ -372,7 +375,7 @@ exposent uniquement les ports 80/443 et fournissent HTTPS.
 
 Le workflow **Deploy backend staging** est déclenché sur `main` ou manuellement.
 Les secrets VPS nécessaires et le fonctionnement du déploiement sont
-documentés dans [CI_CD.md](CI_CD.md).
+documentés dans [docs/ci-cd.md](docs/ci-cd.md).
 
 ## Sécurité
 
@@ -408,11 +411,10 @@ documentés dans [CI_CD.md](CI_CD.md).
 
 ## Documentation complémentaire
 
-- [Analyse initiale du code](ANALYSE_CODE.md)
-- [Architecture SaaS cible](ARCHITECTURE_SAAS.md)
-- [Backend SaaS](BACKEND_SAAS.md)
-- [Facturation](BILLING.md)
-- [CI/CD](CI_CD.md)
+- [Sommaire de la documentation](docs/README.md)
+- [Suivi d'implémentation du backend](docs/implementation-backend.md)
+- [CI/CD et déploiement VPS](docs/ci-cd.md)
+- [Décisions en attente et dette assumée](docs/decisions.md)
 
 ## Licence et responsabilité
 

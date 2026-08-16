@@ -103,10 +103,10 @@ def check_scheduled_clips() -> None:
                         f"pour le clip #{clip_id} n'existe pas sur YouTube.",
                         chat_id,
                     )
-            except Exception as e:
+            except Exception:
                 logger.exception(f"Watchdog : Impossible de vérifier le clip #{clip_id}")
 
-    except Exception as e:
+    except Exception:
         logger.exception("Watchdog : Erreur générale d'exécution")
 
 

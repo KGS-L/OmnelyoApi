@@ -14,7 +14,7 @@ import threading
 from http import HTTPStatus
 from typing import Callable, Optional
 
-from flask import Flask, request, jsonify
+from flask import Flask, request
 
 import config
 from core import youtube_auth
@@ -106,7 +106,7 @@ def oauth2callback() -> tuple[str, int]:
             message=str(e),
             status=HTTPStatus.BAD_REQUEST,
         )
-    except Exception as e:
+    except Exception:
         # Erreurs système imprévues
         logger.exception("Unexpected error during OAuth exchange")
         return _render_error_page(

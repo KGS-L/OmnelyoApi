@@ -69,7 +69,7 @@ app.include_router(social_integrations.callback_router, prefix="/v1")
 app.include_router(telegram_integration.router, prefix="/v1")
 
 # Billing routes are always mounted; each endpoint enforces billing_enabled at runtime
-from api.routes import billing as billing_routes  # local import to avoid import cycles at startup
+from api.routes import billing as billing_routes  # local import to avoid import cycles at startup  # noqa: E402
 app.include_router(billing_routes.router, prefix="/v1")
 
 

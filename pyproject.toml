@@ -1,0 +1,29 @@
+# Outillage du dépôt : lint, tri d'imports et couverture de tests.
+# Le projet n'est pas packagé comme bibliothèque ; aucune section [project].
+
+[tool.ruff]
+target-version = "py311"
+line-length = 160
+extend-exclude = [".venv", "runtime", "storage"]
+
+[tool.ruff.lint]
+# Jeu par défaut volontairement minimal : erreurs de syntaxe Pyflakes (F),
+# pycodestyle E4/E7/E9. Étendre progressivement plutôt que tout activer d'un coup.
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.coverage.run]
+source = ["api", "billing", "bot", "core", "db", "scheduler", "workers"]
+omit = ["tests/*", "migrations/*"]
+
+[tool.coverage.report]
+show_missing = false
+skip_covered = true
+# Les branches infrastructure (rendu FFmpeg, appels externes) restent peu
+# couvertes ; le seuil sera relevé au fil des chantiers de tests.
+fail_under = 40
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

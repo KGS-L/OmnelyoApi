@@ -141,23 +141,8 @@ def _build_ffmpeg_command(
     target_duration: int | None,
 ) -> list[str]:
     """Construit la commande ffmpeg complète."""
-    
-    # Calculer le crop/pad pour 9:16
-    source_ratio = source_height / source_width if source_width else 1
-    
-    if source_ratio > SHORTS_RATIO:
-        # Vidéo trop haute → rogner la hauteur
-        new_height = int(source_width * SHORTS_RATIO)
-        crop_filter = f"crop={source_width}:{new_height}:0:(ih-{new_height})/2"
-    else:
-        # Vidéo trop large → rogner la largeur ou ajouter des bandes
-        new_width = int(source_height / SHORTS_RATIO)
-        # Option 1: crop centré (perd des bords)
-        # crop_filter = f"crop={new_width}:{source_height}:(iw-{new_width})/2:0"
-        # Option 2: pad avec fond flou (meilleur pour Shorts)
-        crop_filter = f"scale={SHORTS_WIDTH}:{SHORTS_HEIGHT}:force_original_aspect_ratio=decrease,pad={SHORTS_WIDTH}:{SHORTS_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=black"
-    
-    # Simplification : utiliser scale+pad universel
+
+    # Filtre universel : scale + pad vers 9:16, quel que soit le ratio source
     video_filter = (
         f"scale={SHORTS_WIDTH}:{SHORTS_HEIGHT}:force_original_aspect_ratio=decrease,"
         f"pad={SHORTS_WIDTH}:{SHORTS_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=black,"
