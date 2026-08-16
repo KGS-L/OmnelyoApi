@@ -21,3 +21,6 @@ apiMoneyFusion>=0.1.4,<0.2
 httpx2>=0.3.0
 pytest>=8.3.0
 coverage>=7.6.0
+# Bot Telegram : la suite unitaire couvre bot/ (handler d'erreurs, handlers)
+python-telegram-bot>=21.0
+Flask>=3.0.3
